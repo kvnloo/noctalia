@@ -218,19 +218,41 @@ namespace {
   }
 
   std::expected<DecodedRasterImage, std::string> decodeWebP(const std::uint8_t* data, std::size_t size) {
-    int width = 0, height = 0;
-    std::uint8_t* rgba = WebPDecodeRGBA(data, size, &width, &height);
-    if (rgba == nullptr) {
+    // WebPDecoderConfig decodes still VP8/VP8L and the first frame of animated
+    // VP8X (typical album art). WebPDecodeRGBA() returns null on some VP8X bitstreams.
+    WebPDecoderConfig config;
+    if (!WebPInitDecoderConfig(&config)) {
+      return std::unexpected("libwebp: failed to init decoder");
+    }
+    if (WebPGetFeatures(data, size, &config.input) != VP8_STATUS_OK) {
+      return std::unexpected("libwebp: failed to read WebP header");
+    }
+    config.output.colorspace = MODE_RGBA;
+    if (WebPDecode(data, size, &config) != VP8_STATUS_OK || config.output.u.RGBA.rgba == nullptr) {
+      WebPFreeDecBuffer(&config.output);
       return std::unexpected("libwebp: failed to decode WebP image");
     }
 
+    const int width = config.output.width;
+    const int height = config.output.height;
+    const int stride = config.output.u.RGBA.stride;
     DecodedRasterImage decoded;
     decoded.width = width;
     decoded.height = height;
-    std::size_t bytes = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4;
-    decoded.pixels.resize(bytes);
-    std::memcpy(decoded.pixels.data(), rgba, bytes);
-    WebPFree(rgba);
+    const std::size_t rowBytes = static_cast<std::size_t>(width) * 4;
+    decoded.pixels.resize(rowBytes * static_cast<std::size_t>(height));
+    const std::uint8_t* rgba = config.output.u.RGBA.rgba;
+    if (stride == static_cast<int>(rowBytes)) {
+      std::memcpy(decoded.pixels.data(), rgba, decoded.pixels.size());
+    } else {
+      for (int y = 0; y < height; ++y) {
+        std::memcpy(
+            decoded.pixels.data() + static_cast<std::size_t>(y) * rowBytes,
+            rgba + static_cast<std::size_t>(y) * static_cast<std::size_t>(stride), rowBytes
+        );
+      }
+    }
+    WebPFreeDecBuffer(&config.output);
     return decoded;
   }
 
