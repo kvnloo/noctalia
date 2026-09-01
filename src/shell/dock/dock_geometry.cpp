@@ -11,6 +11,9 @@ namespace shell::dock {
 
     constexpr std::int32_t kCellPad = 6;
     constexpr std::int32_t kAutoHideTriggerPx = 2;
+    // Fractional scale (e.g. niri 1.75) can leave a 1 device-pixel gap at the
+    // output edge; overlap the screen edge when the dock is flush (#4152).
+    constexpr std::int32_t kScreenEdgeOverlapPx = 1;
     constexpr float kAutoHideSlideExtraPx = 16.0F;
     // Keep in sync with dock_items instance-count badge geometry.
     constexpr float kBadgeSizeRatio = 0.30F;
@@ -203,7 +206,7 @@ namespace shell::dock {
         if (edgeGutter > 0) {
           geometry.surfaceH = static_cast<std::uint32_t>(sb.up + panelH + edgeGutter + zoomPad);
         } else {
-          geometry.marginBottom = std::max(0, mEdge - sb.down);
+          geometry.marginBottom = mEdge <= 0 ? -kScreenEdgeOverlapPx : std::max(0, mEdge - sb.down);
           geometry.surfaceH = static_cast<std::uint32_t>(sb.up + panelH + std::min(mEdge, sb.down) + zoomPad);
         }
         geometry.exclusiveZone = cfg.reserveSpace ? (panelH + std::min(mEdge, sb.down)) : 0;
@@ -211,7 +214,7 @@ namespace shell::dock {
         if (edgeGutter > 0) {
           geometry.surfaceH = static_cast<std::uint32_t>(edgeBadgePad + sb.down + panelH + edgeGutter + zoomPad);
         } else {
-          geometry.marginTop = std::max(0, mEdge - sb.up);
+          geometry.marginTop = mEdge <= 0 ? -kScreenEdgeOverlapPx : std::max(0, mEdge - sb.up);
           geometry.surfaceH =
               static_cast<std::uint32_t>(edgeBadgePad + std::min(mEdge, sb.up) + panelH + sb.down + zoomPad);
         }
@@ -227,7 +230,7 @@ namespace shell::dock {
       if (edgeGutter > 0) {
         geometry.surfaceW = static_cast<std::uint32_t>(sb.left + panelH + edgeGutter + zoomPad);
       } else {
-        geometry.marginRight = std::max(0, mEdge - sb.right);
+        geometry.marginRight = mEdge <= 0 ? -kScreenEdgeOverlapPx : std::max(0, mEdge - sb.right);
         geometry.surfaceW = static_cast<std::uint32_t>(sb.left + panelH + std::min(mEdge, sb.right) + zoomPad);
       }
       geometry.exclusiveZone = cfg.reserveSpace ? (panelH + std::min(mEdge, sb.right)) : 0;
@@ -235,7 +238,7 @@ namespace shell::dock {
       if (edgeGutter > 0) {
         geometry.surfaceW = static_cast<std::uint32_t>(sb.right + panelH + edgeGutter + zoomPad);
       } else {
-        geometry.marginLeft = std::max(0, mEdge - sb.left);
+        geometry.marginLeft = mEdge <= 0 ? -kScreenEdgeOverlapPx : std::max(0, mEdge - sb.left);
         geometry.surfaceW = static_cast<std::uint32_t>(std::min(mEdge, sb.left) + panelH + sb.right + zoomPad);
       }
       geometry.exclusiveZone = cfg.reserveSpace ? (std::min(mEdge, sb.left) + panelH) : 0;
