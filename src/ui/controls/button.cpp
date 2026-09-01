@@ -699,7 +699,13 @@ void Button::applyLabelMaxWidth() {
   if (m_label == nullptr) {
     return;
   }
-  const float maxBtnWidth = maxWidth();
+  // Prefer an explicit maxWidth, but also honor the box a parent already assigned
+  // (equal-width segmented buttons never call setMaxWidth, so Russian power-profile
+  // labels overflow the battery/power card without this).
+  float maxBtnWidth = maxWidth();
+  if (width() > 0.0F && (arrangingByLayout() || sizeAssignedByLayout())) {
+    maxBtnWidth = maxBtnWidth > 0.0F ? std::min(maxBtnWidth, width()) : width();
+  }
   if (maxBtnWidth > 0.0F) {
     const float padding = paddingLeft() + paddingRight();
     const float glyphW = (m_glyph != nullptr && m_glyph->visible()) ? m_glyph->width() + gap() : 0.0F;
@@ -731,6 +737,20 @@ void Button::doLayout(Renderer& renderer) {
   // box instead of collapsing back to intrinsic content width.
   if (assignedWidth > 0.0F || assignedHeight > 0.0F) {
     setSizeFromLayout(std::max(width(), assignedWidth), std::max(height(), assignedHeight));
+  }
+
+  // After the stretch pass we finally know the button box. Re-cap the label so
+  // equal-width segments ellipsize instead of painting past their neighbors.
+  if (m_label != nullptr && width() > 0.0F) {
+    const float previousCap = m_label->maxWidth();
+    applyLabelMaxWidth();
+    if (m_label->maxWidth() != previousCap) {
+      m_label->measure(renderer);
+      Flex::doLayout(renderer);
+      if (assignedWidth > 0.0F || assignedHeight > 0.0F) {
+        setSizeFromLayout(std::max(width(), assignedWidth), std::max(height(), assignedHeight));
+      }
+    }
   }
 
   if (glyphOnly && m_contentAlign == ButtonContentAlign::Center) {
