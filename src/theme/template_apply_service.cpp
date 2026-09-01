@@ -188,31 +188,18 @@ namespace noctalia::theme {
 
   void TemplateApplyService::apply(const GeneratedPalette& palette, std::string_view defaultMode, bool force) const {
     ApplyRequest request = makeRequest(palette, defaultMode);
-    std::function<void()> afterApplyCallback;
     {
       std::scoped_lock lock(m_mutex);
       // Skip rendering and hooks when palette and template inputs are unchanged. Config values
       // are captured only when an application is queued; forced IPC re-application bypasses
       // this deduplication.
       if (!force && m_lastAppliedRequest.has_value() && sameInputs(request, *m_lastAppliedRequest)) {
-        // A queued request has not been applied yet; it fires the callback when it lands.
-        if (m_afterApplyCallback && !m_inFlight && !m_pendingRequest.has_value()) {
-          afterApplyCallback = m_afterApplyCallback;
-        }
-        if (!afterApplyCallback) {
-          return;
-        }
-      } else {
-        request.undoBuiltinIds = syncAppliedBuiltinIds(request.templates);
-        request.generation = ++m_nextGeneration;
-        m_lastAppliedRequest = request;
-        m_pendingRequest = std::move(request);
+        return;
       }
-    }
-
-    if (afterApplyCallback) {
-      DeferredCall::callLater(std::move(afterApplyCallback));
-      return;
+      request.undoBuiltinIds = syncAppliedBuiltinIds(request.templates);
+      request.generation = ++m_nextGeneration;
+      m_lastAppliedRequest = request;
+      m_pendingRequest = std::move(request);
     }
     m_cv.notify_one();
   }
