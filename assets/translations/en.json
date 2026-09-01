@@ -3328,7 +3328,7 @@
           },
           "color-scheme-set": {
             "label": "Set color scheme",
-            "description": "Set palette source and selection in settings.toml (builtin name, wallpaper generator scheme, community id, "
+            "description": "Set palette source and selection in settings.toml (builtin name, wallpaper generator scheme, community id, or custom scheme folder name)"
           },
           "config-reload": {
             "label": "Reload config",

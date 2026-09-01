@@ -43,10 +43,10 @@
 #include "wayland/wayland_connection.h"
 
 #include <algorithm>
-#include <format>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <format>
 #include <memory>
 #include <optional>
 #include <string>
@@ -63,12 +63,10 @@ namespace {
 
   bool useLightPalettePreview(ThemeMode mode) { return mode == ThemeMode::Light; }
 
-  std::string translatedIpcActionField(std::string_view command, std::string_view field, std::string_view fallback) {
-    const std::string key = std::format("settings.widgets.actions.commands.{}.{}", command, field);
-    if (const std::string_view translated = i18n::Service::instance().lookup(key); !translated.empty()) {
-      return std::string(translated);
-    }
-    return std::string(fallback);
+  // The IPC command set is closed (IpcService::bind takes a static cli::Command), so a missing key
+  // means en.json drifted from the schema; tr() surfaces that as !!key!! instead of hiding it.
+  std::string translatedIpcActionField(std::string_view command, std::string_view field) {
+    return i18n::tr(std::format("settings.widgets.actions.commands.{}.{}", command, field));
   }
 
   ColorSwatchPreview palettePreviewFromMetadata(const noctalia::theme::AvailablePalette::PreviewMode& metadata) {
@@ -856,8 +854,8 @@ std::vector<settings::GestureActionOption> SettingsWindow::gestureActionCatalog(
             .option =
                 settings::SelectOption{
                     .value = std::string(handler.command),
-                    .label = translatedIpcActionField(handler.command, "label", handler.command),
-                    .description = translatedIpcActionField(handler.command, "description", handler.description),
+                    .label = translatedIpcActionField(handler.command, "label"),
+                    .description = translatedIpcActionField(handler.command, "description"),
                 },
             .argsSpec = std::string(handler.args),
         }
