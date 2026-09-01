@@ -43,6 +43,7 @@
 #include "wayland/wayland_connection.h"
 
 #include <algorithm>
+#include <format>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -61,6 +62,14 @@ namespace {
   constexpr auto kSearchDebounceInterval = std::chrono::milliseconds(120);
 
   bool useLightPalettePreview(ThemeMode mode) { return mode == ThemeMode::Light; }
+
+  std::string translatedIpcActionField(std::string_view command, std::string_view field, std::string_view fallback) {
+    const std::string key = std::format("settings.widgets.actions.commands.{}.{}", command, field);
+    if (const std::string_view translated = i18n::Service::instance().lookup(key); !translated.empty()) {
+      return std::string(translated);
+    }
+    return std::string(fallback);
+  }
 
   ColorSwatchPreview palettePreviewFromMetadata(const noctalia::theme::AvailablePalette::PreviewMode& metadata) {
     ColorSwatchPreview preview;
@@ -847,9 +856,8 @@ std::vector<settings::GestureActionOption> SettingsWindow::gestureActionCatalog(
             .option =
                 settings::SelectOption{
                     .value = std::string(handler.command),
-                    // The verb is the label: it is what goes in the config and what errors name.
-                    .label = std::string(handler.command),
-                    .description = std::string(handler.description),
+                    .label = translatedIpcActionField(handler.command, "label", handler.command),
+                    .description = translatedIpcActionField(handler.command, "description", handler.description),
                 },
             .argsSpec = std::string(handler.args),
         }
