@@ -145,9 +145,8 @@ namespace mpris {
       hq += "/hqdefault.jpg";
       candidates.push_back(std::move(hq));
     }
-    if (const std::string stripped = withoutQueryParam(primaryUrl, "size");
-        !stripped.empty() && stripped != primaryUrl) {
-      candidates.push_back(stripped);
+    if (std::string stripped = withoutQueryParam(primaryUrl, "size"); !stripped.empty()) {
+      candidates.push_back(std::move(stripped));
     }
     return candidates;
   }
