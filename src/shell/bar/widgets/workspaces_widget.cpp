@@ -39,10 +39,10 @@ namespace {
     return minimal ? Style::fontSizeBody : Style::fontSizeMini;
   }
 
-  [[nodiscard]] FontWeight workspaceFontWeight(FontWeight baseWeight, bool minimal, bool active) {
-    if (minimal && active) {
-      return static_cast<FontWeight>(static_cast<int>(baseWeight) + 200);
-    }
+  // Minimal style previously force-boosted the active label by +200, which picks a
+  // different face with shorter glyphs than Regular. Keep active/inactive on the
+  // same weight so numbers stay the same size (noctalia-dev/noctalia#4089).
+  [[nodiscard]] FontWeight workspaceFontWeight(FontWeight baseWeight, bool /*minimal*/, bool /*active*/) {
     return baseWeight;
   }
 
