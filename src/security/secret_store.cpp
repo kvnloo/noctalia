@@ -237,8 +237,7 @@ namespace security {
 
     SecretStoreBackendResult unlockDefaultCollection(GCancellable* cancellable) {
       GError* rawError = nullptr;
-      const auto flags =
-          static_cast<SecretServiceFlags>(SECRET_SERVICE_OPEN_SESSION | SECRET_SERVICE_LOAD_COLLECTIONS);
+      const auto flags = static_cast<SecretServiceFlags>(SECRET_SERVICE_OPEN_SESSION | SECRET_SERVICE_LOAD_COLLECTIONS);
       SecretService* rawService = secret_service_get_sync(flags, cancellable, &rawError);
       ErrorPtr error(rawError, &g_error_free);
       if (rawService == nullptr) {
