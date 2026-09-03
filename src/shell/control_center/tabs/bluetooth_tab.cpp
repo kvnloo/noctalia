@@ -448,6 +448,9 @@ std::unique_ptr<Flex> BluetoothTab::create() {
                     }
                   }
                   break;
+                case BluetoothPairingKind::DisplayPasskey:
+                  // Informational only: no Agent1 reply to send. Do not cancel.
+                  break;
                 default:
                   m_agent->cancelPending();
                   break;

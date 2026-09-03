@@ -40,7 +40,9 @@ struct BluetoothAgent::Impl {
   explicit Impl(SystemBus& b) : bus(b) {}
 
   [[nodiscard]] bool hasPending() const noexcept {
-    return pendingString.has_value() || pendingUint.has_value() || pendingVoid.has_value();
+    // DisplayPasskey is fire-and-forget (no Result holder). Gate on kind so the
+    // pairing card can show the six-digit code until Cancel / BlueZ Cancel.
+    return pending.kind != BluetoothPairingKind::None;
   }
 
   void rejectIfBusy(auto& result, const char* what) {
