@@ -235,6 +235,76 @@ namespace security {
       return result;
     }
 
+    SecretStoreBackendResult unlockDefaultCollection(GCancellable* cancellable) {
+      GError* rawError = nullptr;
+      const auto flags =
+          static_cast<SecretServiceFlags>(SECRET_SERVICE_OPEN_SESSION | SECRET_SERVICE_LOAD_COLLECTIONS);
+      SecretService* rawService = secret_service_get_sync(flags, cancellable, &rawError);
+      ErrorPtr error(rawError, &g_error_free);
+      if (rawService == nullptr) {
+        return withDefaultCollectionState(resultFromError(error.get()), cancellable);
+      }
+      const auto service =
+          std::unique_ptr<SecretService, void (*)(SecretService*)>(rawService, [](SecretService* value) {
+            g_object_unref(value);
+          });
+
+      rawError = nullptr;
+      SecretCollection* rawCollection = secret_collection_for_alias_sync(
+          service.get(), SECRET_COLLECTION_DEFAULT, SECRET_COLLECTION_NONE, cancellable, &rawError
+      );
+      error.reset(rawError);
+      if (rawCollection == nullptr) {
+        return withDefaultCollectionState(
+            error == nullptr ? SecretStoreBackendResult{
+                                   .status = SecretStoreStatus::NotFound,
+                                   .errorCategory = SecretStoreErrorCategory::None,
+                               }
+                             : resultFromError(error.get()),
+            cancellable
+        );
+      }
+      const auto collection =
+          std::unique_ptr<SecretCollection, void (*)(SecretCollection*)>(rawCollection, [](SecretCollection* value) {
+            g_object_unref(value);
+          });
+
+      if (secret_collection_get_locked(collection.get()) == 0) {
+        return {
+            .status = SecretStoreStatus::Success,
+            .errorCategory = SecretStoreErrorCategory::None,
+            .defaultCollectionState = SecretStoreCollectionState::Unlocked,
+        };
+      }
+
+      GList* objects = g_list_append(nullptr, collection.get());
+      GList* unlocked = nullptr;
+      rawError = nullptr;
+      secret_service_unlock_sync(service.get(), objects, cancellable, &unlocked, &rawError);
+      g_list_free(objects);
+      if (unlocked != nullptr) {
+        g_list_free_full(unlocked, g_object_unref);
+      }
+      error.reset(rawError);
+      if (error != nullptr) {
+        return withDefaultCollectionState(resultFromError(error.get()), cancellable);
+      }
+
+      const auto state = inspectDefaultCollection(cancellable);
+      if (state == SecretStoreCollectionState::Unlocked) {
+        return {
+            .status = SecretStoreStatus::Success,
+            .errorCategory = SecretStoreErrorCategory::None,
+            .defaultCollectionState = state,
+        };
+      }
+      return {
+          .status = SecretStoreStatus::DeniedOrLocked,
+          .errorCategory = SecretStoreErrorCategory::Locked,
+          .defaultCollectionState = state,
+      };
+    }
+
     template <typename Function>
     SecretStoreBackendResult withCancellable(SecretStoreCancellation& cancellation, Function&& function) {
       if (cancellation.cancelled()) {
@@ -319,13 +389,55 @@ namespace security {
             return std::move(*result);
           }
           if (!lockedItemFound) {
-            return withDefaultCollectionState(
-                SecretStoreBackendResult{
-                    .status = SecretStoreStatus::NotFound,
-                    .errorCategory = SecretStoreErrorCategory::None,
-                },
-                cancellable
+            if (inspectDefaultCollection(cancellable) != SecretStoreCollectionState::Locked) {
+              return withDefaultCollectionState(
+                  SecretStoreBackendResult{
+                      .status = SecretStoreStatus::NotFound,
+                      .errorCategory = SecretStoreErrorCategory::None,
+                  },
+                  cancellable
+              );
+            }
+
+            SecretStoreBackendResult unlockedCollection = unlockDefaultCollection(cancellable);
+            if (unlockedCollection.status == SecretStoreStatus::Cancelled) {
+              return unlockedCollection;
+            }
+            if (unlockedCollection.status != SecretStoreStatus::Success) {
+              if (unlockedCollection.status == SecretStoreStatus::DeniedOrLocked) {
+                return unlockedCollection;
+              }
+              return withDefaultCollectionState(
+                  SecretStoreBackendResult{
+                      .status = SecretStoreStatus::DeniedOrLocked,
+                      .errorCategory = SecretStoreErrorCategory::Locked,
+                  },
+                  cancellable
+              );
+            }
+
+            rawError = nullptr;
+            SecretItemListPtr retriedItems(
+                secret_service_search_sync(nullptr, &schema(), table.get(), inspectFlags, cancellable, &rawError)
             );
+            error.reset(rawError);
+            if (error != nullptr) {
+              return withDefaultCollectionState(resultFromError(error.get()), cancellable);
+            }
+            bool retriedLocked = false;
+            if (auto result = loadUnlocked(retriedItems, retriedLocked); result.has_value()) {
+              return std::move(*result);
+            }
+            if (!retriedLocked) {
+              return withDefaultCollectionState(
+                  SecretStoreBackendResult{
+                      .status = SecretStoreStatus::NotFound,
+                      .errorCategory = SecretStoreErrorCategory::None,
+                  },
+                  cancellable
+              );
+            }
+            lockedItemFound = true;
           }
 
           rawError = nullptr;
