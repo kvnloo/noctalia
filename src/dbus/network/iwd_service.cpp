@@ -84,9 +84,6 @@ namespace {
     if (const auto i32 = variantGet<std::int32_t>(it->second)) {
       return static_cast<std::int16_t>(*i32);
     }
-    if (const auto i8 = variantGet<std::int8_t>(it->second)) {
-      return static_cast<std::int16_t>(*i8);
-    }
     return std::nullopt;
   }
 
