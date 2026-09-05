@@ -44,8 +44,8 @@ namespace {
   constexpr float kVolumeSyncEpsilon = 0.005F; // 0.5%
   constexpr auto kVolumeCommitInterval = std::chrono::milliseconds(16);
 
-  // Used to resolve application icons in AudioTab. Function-local so
-  // --version/--help/msg do not pay IconResolver::rebuild() before main().
+  // Application icons for AudioTab rows. Must stay function-local: at TU scope
+  // its icon-theme walk runs before main(), on every CLI invocation.
   [[nodiscard]] IconResolver& audioTabIconResolver() {
     static IconResolver resolver;
     return resolver;

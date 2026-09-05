@@ -37,8 +37,8 @@ namespace {
   constexpr float kLegendSwatch = 6.0F;
   constexpr float kUsageDurationFontScale = 0.85F;
 
-  // Function-local so --version/--help/msg do not pay IconResolver::rebuild()
-  // before main(). Constructed on first screen-time icon resolve.
+  // App icons for the usage list. Must stay function-local: at TU scope its
+  // icon-theme walk runs before main(), on every CLI invocation.
   [[nodiscard]] IconResolver& screenTimeIconResolver() {
     static IconResolver resolver;
     return resolver;
