@@ -1,0 +1,22 @@
+=== Noctalia Doctor Check ===
+
+✗ No supported compositor detected
+  Requires: Hyprland, Sway, or Niri
+  HYPRLAND_INSTANCE_SIGNATURE: unset
+  XDG_CURRENT_DESKTOP: unset
+  WAYLAND_DISPLAY: unset
+✓ Noctalia process running (PID: 2679)
+✗ IPC socket not found: /noctalia.sock
+  XDG_RUNTIME_DIR is not set
+✗ IPC not responding or timed out
+✓ gsettings available
+✓ busctl available
+
+=== Doctor Summary ===
+Compositor: none
+Noctalia IPC: NOT READY
+Theme tools: gsettings
+
+STATUS: INCONCLUSIVE (no compositor detected)
+Verification requires Hyprland, Sway, or Niri compositor.
+Exit code: 2

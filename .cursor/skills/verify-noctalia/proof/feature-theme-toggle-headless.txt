@@ -1,0 +1,2 @@
+INCONCLUSIVE: noctalia binary not found in PATH
+Exit code: 2

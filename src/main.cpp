@@ -3,6 +3,7 @@
 #include "cli/completions.h"
 #include "cli/help.h"
 #include "cli/schema_root.h"
+#include "cli/verify.h"
 #include "config/cli.h"
 #include "core/build_info.h"
 #include "core/log.h"
@@ -290,6 +291,8 @@ int main(int argc, char* argv[]) {
       return noctalia::launcher::runDmenuCli(argc, argv);
     if (std::strcmp(argv[1], "plugins") == 0)
       return noctalia::plugins::runCli(argc, argv);
+    if (std::strcmp(argv[1], "verify") == 0)
+      return noctalia::cli::runVerifyCli(argc, argv);
   }
 
   for (int i = 1; i < argc; ++i) {

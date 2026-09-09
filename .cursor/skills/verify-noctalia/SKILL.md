@@ -50,168 +50,216 @@ This skill provides:
 
 ### With Compositor (local/GUI environment)
 ```bash
-cd /workspace
-.cursor/skills/verify-noctalia/doctor.sh
-.cursor/skills/verify-noctalia/launch.sh
-.cursor/skills/verify-noctalia/drive.sh bar-toggle main
-.cursor/skills/verify-noctalia/snapshot.sh test-bar-toggle
-.cursor/skills/verify-noctalia/cleanup.sh
+cd /workspace/.cursor/skills/verify-noctalia
+./control-noctalia doctor
+./control-noctalia feature theme-mode-toggle
+
+# Or via CLI (after build)
+noctalia verify doctor
+noctalia verify feature theme-mode-toggle
 ```
 
 ### Without Compositor (cloud VM)
 ```bash
-cd /workspace
-.cursor/skills/verify-noctalia/doctor.sh --dry-run
-# INCONCLUSIVE: compositor not available, but build/config validated
+cd /workspace/.cursor/skills/verify-noctalia
+./control-noctalia doctor
+# Exit 2 INCONCLUSIVE: compositor not available
 ```
 
 ---
 
 ## 1. Doctor — Pre-flight Checks
 
-**Script**: `doctor.sh`
+**Script**: `control-noctalia doctor`
 
-Validates environment, dependencies, build, and configuration.
+Validates compositor, Noctalia process, IPC, and theme tools.
 
 ### Usage
 ```bash
-./doctor.sh [--dry-run] [--verbose]
+./control-noctalia doctor [--verbose]
+
+# Or via CLI
+noctalia verify doctor [--verbose]
 ```
 
 ### Checks
-1. **Repository**: In `/workspace`, git status clean or WIP ok
-2. **Build**: `build-debug/noctalia` exists or can be built via `just build`
-3. **Dependencies**: Wayland libs, runtime deps (optional: `upower`, `ddcutil`)
-4. **Compositor**: `$WAYLAND_DISPLAY` set, compositor process detected
-5. **Configuration**: `example.toml` parses, no schema errors via `noctalia config validate`
-6. **IPC**: Socket path available, schema check via `noctalia msg --help`
-7. **Assets**: Runtime asset tree `assets/` exists with required files
+1. **Compositor**: Detects Hyprland, Sway, or Niri via environment variables
+2. **Noctalia Process**: Checks if `noctalia` is running
+3. **IPC Socket**: Verifies socket exists at `$XDG_RUNTIME_DIR/noctalia.sock`
+4. **IPC Responsiveness**: Tests `noctalia msg status` command
+5. **Theme Tools**: Checks for `gsettings` or `dconf` availability
+6. **Portal Tools**: Checks for `busctl` for D-Bus monitoring
 
 ### Exit Codes
-- `0` — all checks passed
-- `1` — critical failure (build, config invalid)
-- `2` — warnings (compositor missing, optional deps missing) — can proceed with limitations
+- `0` (PASS) — Compositor present, Noctalia responding
+- `1` (FAIL) — Critical error executing doctor
+- `2` (INCONCLUSIVE) — No compositor detected or Noctalia not responding
 
-### Dry-Run Mode
-On VMs without compositor:
+### Without Compositor
+On VMs without compositor, doctor returns exit code 2:
 ```bash
-./doctor.sh --dry-run
+./control-noctalia doctor
+# STATUS: INCONCLUSIVE (no compositor detected)
+# Verification requires Hyprland, Sway, or Niri compositor.
 ```
-Skips compositor/runtime checks, validates build/config only.
 
 ---
 
-## 2. Launch — Start Noctalia
+## 2. Feature Testing
 
-**Script**: `launch.sh`
+**Script**: `control-noctalia feature <feature-name>`
 
-Spawns Noctalia in foreground or daemon mode, captures startup logs.
+Executes automated feature verification tests.
 
 ### Usage
 ```bash
-./launch.sh [--daemon] [--log=path] [--config=path]
+./control-noctalia feature <feature-name> [--evidence-dir DIR] [--no-cleanup]
+
+# Or via CLI
+noctalia verify feature <feature-name> [--evidence-dir DIR] [--no-cleanup]
 ```
+
+### Available Features
+- `theme-mode-toggle` — Dark/light theme mode transitions with portal sync
+
+### Theme Mode Toggle Test
+
+Tests the dark ↔ light theme toggle with portal verification:
+
+```bash
+./control-noctalia feature theme-mode-toggle
+```
+
+**Test Steps:**
+1. Checks prerequisites (compositor, Noctalia IPC, theme tools)
+2. Captures initial theme mode and portal state (gsettings/dconf)
+3. Executes `noctalia msg theme-mode-toggle`
+4. Waits 0.5s for portal sync
+5. Verifies `color-scheme` changed in portal
+6. Restores initial theme mode
+7. Archives evidence or preserves with `--no-cleanup`
+
+**Exit Codes:**
+- `0` (PASS) — Theme toggled and portal color-scheme changed
+- `1` (FAIL) — Compositor present but portal unchanged (indicates bug)
+- `2` (INCONCLUSIVE) — No compositor, Noctalia not running, or no theme tools
+
+**Evidence:**
+- `test.log` — Test execution log
+- `initial-mode.txt` — Initial theme mode
+- `before-*` / `after-*` — Portal state snapshots
+- `toggle-output.txt` — IPC command output
+- `result.txt` — PASS/FAIL verdict
 
 ### Options
-- `--daemon`: Background mode via `noctalia --daemon`
-- `--log=path`: Redirect output to log file (default: `/tmp/noctalia-verify.log`)
-- `--config=path`: Use custom config (default: `example.toml` or `~/.config/noctalia/config.toml`)
+- `--evidence-dir DIR` — Custom evidence directory (default: `/tmp/noctalia-verify-evidence`)
+- `--no-cleanup` — Keep evidence directory after test (default: archive to .tar.gz)
 
-### Behavior
-- Checks for existing instance via IPC socket
-- Exports `NOCTALIA_VERIFY_PID` and `NOCTALIA_VERIFY_SOCKET`
-- Waits for IPC socket readiness (up to 10s timeout)
-- Returns when shell is responsive
+---
 
-### Example
+## 3. IPC Control Commands
+
+**Script**: `control-noctalia <command>`
+
+Direct IPC wrappers for Noctalia control operations.
+
+### Usage
 ```bash
-./launch.sh --daemon --log=/tmp/noctalia-test.log
-# Shell running, IPC socket at $NOCTALIA_VERIFY_SOCKET
+./control-noctalia <command> [args...]
+```
+
+### Available Commands
+
+**Connectivity:**
+- `ping` — Test IPC (returns PONG or ERROR)
+- `status` — Get full status JSON
+
+**Theme Operations:**
+- `get-theme-mode` — Get current mode (dark/light/auto)
+- `set-theme-mode <mode>` — Set mode explicitly
+- `toggle-theme-mode` — Toggle between dark and light
+
+**Panel Operations:**
+- `open-panel <id> [context]` — Open panel (launcher, control-center, etc.)
+- `toggle-panel <id> [context]` — Toggle panel
+- `close-panel [id]` — Close active or named panel
+
+**Notification Operations:**
+- `get-dnd` — Get Do Not Disturb status
+- `set-dnd <state>` — Set DND (on/off/true/false/1/0)
+- `toggle-dnd` — Toggle DND mode
+
+**Raw IPC:**
+- `msg <cmd> [args...]` — Pass-through to `noctalia msg`
+
+### Examples
+```bash
+# Health check
+./control-noctalia ping
+
+# Theme control
+./control-noctalia toggle-theme-mode
+./control-noctalia get-theme-mode
+
+# Panel control
+./control-noctalia open-panel launcher
+./control-noctalia toggle-panel control-center audio
+
+# Notifications
+./control-noctalia set-dnd on
+./control-noctalia toggle-dnd
+
+# Raw IPC
+./control-noctalia msg bar-toggle
 ```
 
 ---
 
-## 3. Drive — Execute Feature Scenarios
+## 4. Feature Documentation
 
-**Script**: `drive.sh`
+See `features/` directory for detailed feature specifications:
 
-Orchestrates feature tests via IPC commands, validates responses.
+- **[features/theme-mode-toggle.md](features/theme-mode-toggle.md)** — Theme mode transitions, portal sync, gotchas (PER-328)
+- **[features/README.md](features/README.md)** — Feature inventory
 
-### Usage
-```bash
-./drive.sh <feature> [options]
-```
-
-### Supported Features
-See `features/` directory for detailed scenarios:
-- `bar` — toggle, show, hide bars
-- `control-center` — open/close control center
-- `notifications` — show test notifications, check history
-- `wallpaper` — list, set wallpapers
-- `launcher` — open, search, close launcher
-- `dock` — pin/unpin apps, toggle visibility
-
-### Example
-```bash
-./drive.sh bar --action=toggle --id=main
-./drive.sh notifications --test-notify
-./drive.sh wallpaper --list
-```
-
-### IPC Commands
-Wraps `noctalia msg <command>` with validation:
-```bash
-noctalia msg bar-toggle main
-noctalia msg panel-open launcher
-noctalia msg notification-show "Test" "Body text"
-```
-
-### Feature Files
-Each `features/<feature>.md` documents:
-- **Goal**: What the feature does
-- **Commands**: IPC commands to exercise it
-- **Expected**: Observable outcomes (panel visible, notification toast, etc.)
-- **Evidence**: Screenshot/log artifacts to capture
+Each feature file includes:
+- **Sub-features** — Specific capabilities being tested
+- **User paths** — How to trigger the feature (IPC, UI, keyboard)
+- **Expected behavior** — Observable outcomes
+- **Driving it** — How to automate testing with `control-noctalia`
+- **Gotchas** — Known timing issues, race conditions, edge cases
 
 ---
 
-## 4. Evidence — Capture Artifacts
+## 5. Evidence & Artifacts
 
-**Script**: `snapshot.sh`
+Evidence is captured automatically during feature tests and saved to:
 
-Captures screenshots, logs, configuration state for proof artifacts.
+```
+/tmp/noctalia-verify-evidence/<feature-name>-<timestamp>/
+  test.log              — Test execution log
+  initial-mode.txt      — Initial state
+  before-*.txt          — Pre-test snapshots
+  after-*.txt           — Post-test snapshots
+  toggle-output.txt     — IPC command output
+  result.txt            — PASS/FAIL/INCONCLUSIVE verdict
+```
 
-### Usage
+By default, evidence is archived to `.tar.gz` after test completion. Use `--no-cleanup` to preserve uncompressed directory.
+
+### Committing Evidence
+
 ```bash
-./snapshot.sh <name> [--type=screenshot|log|state|all]
-```
+# Run test with preserved evidence
+./control-noctalia feature theme-mode-toggle --no-cleanup
 
-### Artifact Types
-- `screenshot`: Fullscreen capture via compositor or `grim`
-- `log`: Noctalia output, IPC responses, system logs
-- `state`: Config, IPC handler list, running panels/bars
-- `all`: Everything above
+# Copy to skill proof directory
+mkdir -p .cursor/skills/verify-noctalia/proof
+cp -r /tmp/noctalia-verify-evidence/* .cursor/skills/verify-noctalia/proof/
 
-### Output Location
-```
-/tmp/noctalia-evidence/<timestamp>-<name>/
-  screenshot.png
-  noctalia.log
-  ipc-state.txt
-  config-dump.toml
-```
-
-### Example
-```bash
-./snapshot.sh test-bar-toggle --type=screenshot
-# Saved to /tmp/noctalia-evidence/20260909-2319-test-bar-toggle/screenshot.png
-```
-
-### Integration
-Evidence artifacts survive cleanup — copy to workspace for commit:
-```bash
-cp -r /tmp/noctalia-evidence /workspace/verification-artifacts/
-git add verification-artifacts/
+# Commit
+git add .cursor/skills/verify-noctalia/proof/
+git commit -m "feat: add theme-toggle verification evidence"
 ```
 
 ---
@@ -242,113 +290,98 @@ Stops Noctalia instance, removes temp files, restores environment.
 
 ---
 
+## 6. CLI Integration
+
+The `control-noctalia` script is wired into the Noctalia binary as `noctalia verify`:
+
+```bash
+# Via script (always available)
+cd .cursor/skills/verify-noctalia
+./control-noctalia doctor
+./control-noctalia feature theme-mode-toggle
+
+# Via CLI (after build)
+noctalia verify doctor
+noctalia verify feature theme-mode-toggle
+noctalia verify list
+```
+
+### Build Requirements
+
+The verify command requires C++23 with `std::print` support:
+- GCC 13+ or Clang 16+
+- `src/cli/verify.cpp` — CLI implementation
+- `src/cli/verify.h` — CLI header
+- `src/cli/schema_verify.h` — CLI schema
+
+### How It Works
+
+`noctalia verify` locates the skill directory and invokes `control-noctalia`:
+
+1. Searches `.cursor/skills/verify-noctalia/` relative to `$PWD`
+2. Falls back to installed location (e.g., `/usr/share/noctalia/skills/verify-noctalia/`)
+3. Executes `control-noctalia <subcommand>` with arguments
+4. Returns the same exit codes (0=PASS, 1=FAIL, 2=INCONCLUSIVE)
+
+---
+
 ## Feature Test Scenarios
 
-See `features/` for detailed test plans:
-- **[features/bar.md](features/bar.md)** — Bar visibility, widgets, multi-monitor
-- **[features/control-center.md](features/control-center.md)** — Settings, quick actions, network/bluetooth
-- **[features/notifications.md](features/notifications.md)** — Toasts, history, urgency levels
-- **[features/wallpaper.md](features/wallpaper.md)** — Wallpaper picker, multi-monitor, automation
-- **[features/launcher.md](features/launcher.md)** — App search, calculator, emoji picker
-
-Each feature file includes:
-- **Commands** to drive the feature
-- **Expected behavior** (UI changes, panel states)
-- **Evidence** (what to capture as proof)
-
----
-
-## Helpers — Utility Scripts
-
-### `ipc-send.sh` — Safe IPC Wrapper
-```bash
-./ipc-send.sh <command> [args...]
-# Wraps noctalia msg, validates socket, captures response
-```
-
-### `wait-for-socket.sh` — IPC Ready Check
-```bash
-./wait-for-socket.sh [timeout_seconds]
-# Polls for IPC socket, returns when ready or timeout
-```
-
-### `screenshot.sh` — Capture Display
-```bash
-./screenshot.sh <output_path>
-# Uses grim, compositor screencopy, or fallback
-```
-
-### `check-panel.sh` — Panel State Query
-```bash
-./check-panel.sh <panel_name>
-# Returns 0 if panel is open, 1 if closed
-```
-
----
-
-## Proving Once — Example Workflow
-
-### Goal
-Prove bar toggle works: bar visible → hidden → visible.
-
-### Steps
-```bash
-# 1. Doctor
-./doctor.sh || exit 1
-
-# 2. Launch
-./launch.sh --daemon --log=/tmp/noctalia-bar-test.log
-
-# 3. Capture initial state
-./snapshot.sh bar-initial --type=screenshot
-
-# 4. Toggle off
-./drive.sh bar --action=toggle --id=main
-sleep 0.5
-./snapshot.sh bar-hidden --type=screenshot
-
-# 5. Toggle on
-./drive.sh bar --action=toggle --id=main
-sleep 0.5
-./snapshot.sh bar-visible --type=screenshot
-
-# 6. Cleanup
-./cleanup.sh --keep-evidence
-
-# 7. Evidence
-ls /tmp/noctalia-evidence/*/screenshot.png
-# bar-initial, bar-hidden, bar-visible — PASS if bar disappears then reappears
-```
-
-### Fail→Pass Pattern
-To show a fix working:
-1. Reproduce bug on `main` branch: capture evidence → `evidence-before/`
-2. Apply fix on feature branch
-3. Re-run scenario: capture evidence → `evidence-after/`
-4. Commit both: shows broken → fixed transition
+See `features/` for detailed feature specifications:
+- **[features/theme-mode-toggle.md](features/theme-mode-toggle.md)** — Dark/light theme toggle with portal sync, gotchas (PER-328)
+- **[features/README.md](features/README.md)** — Feature inventory
 
 ---
 
 ## Cloud VM / Headless Workflow
 
-When compositor is unavailable:
+When compositor is unavailable (cloud VM, CI without Wayland):
 
-### Doctor Only
+### Doctor Returns INCONCLUSIVE
+
 ```bash
-./doctor.sh --dry-run
-# Exit code 2 (warnings): compositor unavailable
-# Still validates: build, config, CLI, IPC schema
+cd .cursor/skills/verify-noctalia
+./control-noctalia doctor
+
+# Output:
+# === Noctalia Doctor Check ===
+# ✗ No supported compositor detected
+# ✗ Noctalia not running
+# ✓ gsettings available
+# ✓ busctl available
+#
+# STATUS: INCONCLUSIVE (no compositor detected)
+# Verification requires Hyprland, Sway, or Niri compositor.
+#
+# Exit code: 2
 ```
 
-### Report INCONCLUSIVE
+### Feature Tests Also Return INCONCLUSIVE
+
 ```bash
-echo "INCONCLUSIVE: Noctalia verification skill created, but full runtime testing blocked."
-echo "Blocker: No Wayland compositor available on cloud VM."
-echo "Validated: build success, config parsing, IPC schema."
-echo "Evidence: /workspace/.cursor/skills/verify-noctalia/ (skill ready for local testing)"
+./control-noctalia feature theme-mode-toggle
+
+# Output:
+# INCONCLUSIVE: No compositor detected (requires Hyprland/Sway/Niri)
+#
+# Exit code: 2
 ```
 
-Ship the skill anyway — it's useful for local dev, CI with compositor, or future VM with Wayland.
+### Report INCONCLUSIVE Evidence
+
+The skill is still valuable even when full runtime testing is blocked:
+- ✅ Control CLI created and executable
+- ✅ Feature documentation complete
+- ✅ C++ verify command wired into Noctalia binary
+- ✅ Exit codes properly defined (0=PASS, 1=FAIL, 2=INCONCLUSIVE)
+- ⚠️ Cannot execute without Wayland compositor (expected on cloud VM)
+
+**Expected behavior on Hyprland desktop:**
+- Doctor returns exit 0 (PASS) when Noctalia is running
+- Feature tests execute and verify portal changes
+- Evidence is captured showing before/after portal state
+
+Ship the skill anyway — it's ready for local dev, CI with Wayland, or user testing.
 
 ---
 
@@ -375,66 +408,29 @@ Ship the skill anyway — it's useful for local dev, CI with compositor, or futu
 ## Troubleshooting
 
 ### "Compositor not found"
-- Ensure `$WAYLAND_DISPLAY` is set
+- Doctor returns exit 2 (INCONCLUSIVE) — expected on cloud VM
+- On local machine: ensure `$WAYLAND_DISPLAY` is set
 - Check compositor is running: `ps aux | grep -E "hyprland|sway|niri"`
-- On cloud VM: use `--dry-run` mode
 
-### "IPC socket timeout"
-- Shell failed to start: check logs in `/tmp/noctalia-verify.log`
-- Compositor incompatible: Noctalia needs layer-shell support
-- Check dependencies: `./doctor.sh --verbose`
+### "IPC not responding"
+- Ensure Noctalia is running: `pgrep noctalia`
+- Start Noctalia: `noctalia --daemon`
+- Check IPC socket: `ls -la $XDG_RUNTIME_DIR/noctalia.sock`
 
-### "Build failed"
-- Missing deps: see [BUILDING.md](../../../BUILDING.md)
-- C++ version: needs GCC 13+ or Clang 16+ for C++23
-- Run `just configure && just build` manually
-
-### "Screenshot failed"
-- Install `grim` for Wayland screenshots
-- Or use compositor's native capture (Hyprland: `hyprctl screenshot`)
-- Fallback: log-based verification only
-
----
-
-## Extending the Skill
-
-### Adding New Features
-1. Create `features/new-feature.md`
-2. Document commands, expected behavior, evidence
-3. Update `drive.sh` to support `./drive.sh new-feature`
-4. Add to `features/README.md` index
-
-### Custom IPC Commands
-Wrap new commands in `ipc-send.sh`:
-```bash
-./ipc-send.sh workspace-switch 2
-./ipc-send.sh theme-apply my-theme.toml
-```
-
-### Automated Test Suites
-Chain drive scenarios:
-```bash
-for feature in bar notifications wallpaper; do
-  ./drive.sh $feature --smoke-test || exit 1
-done
-```
+### "Theme tools unavailable"
+- Install gsettings: `sudo apt-get install libglib2.0-bin`
+- Or install dconf: `sudo apt-get install dconf-cli`
+- Feature tests will return INCONCLUSIVE without theme tools
 
 ---
 
 ## References
 
 - [Noctalia README](../../../README.md) — Project overview
-- [BUILDING.md](../../../BUILDING.md) — Build dependencies and instructions
-- [CONTRIBUTING.md](../../../CONTRIBUTING.md) — Architecture, debugging, code style
-- [example.toml](../../../example.toml) — Full configuration reference
-- [IPC Schema](../../../src/ipc/) — `noctalia msg --help` for command list
+- [BUILDING.md](../../../BUILDING.md) — Build dependencies
+- [example.toml](../../../example.toml) — Configuration reference
+- [features/theme-mode-toggle.md](features/theme-mode-toggle.md) — Detailed theme toggle specification
 
 ---
 
-## License
-
-Same as Noctalia (MIT). This skill is part of the Noctalia repository tooling.
-
----
-
-**Build the Lever**: This skill is verification-as-infrastructure. Doctor catches environment issues. Drive automates manual testing. Evidence makes proof portable. Cleanup keeps runs isolated. Together: tight iteration loops, reproducible failures, confident deploys.
+**Build the Lever**: This skill provides verification-as-infrastructure. Doctor validates prerequisites. Feature tests automate manual testing. Control CLI makes IPC accessible. Evidence makes proof portable. Together: tight iteration loops, reproducible verification, confident deploys.
