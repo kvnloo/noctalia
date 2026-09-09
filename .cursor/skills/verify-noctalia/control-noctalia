@@ -16,6 +16,106 @@ check_responsive() {
 }
 
 case "$CMD" in
+  doctor)
+    VERBOSE="${2:-}"
+    
+    echo "=== Noctalia Doctor Check ===" >&2
+    echo "" >&2
+    
+    # 1. Check compositor
+    COMPOSITOR="none"
+    if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+      echo "✓ Compositor: Hyprland" >&2
+      COMPOSITOR="hyprland"
+    elif command -v swaymsg &>/dev/null && swaymsg -t get_version &>/dev/null 2>&1; then
+      echo "✓ Compositor: Sway" >&2
+      COMPOSITOR="sway"
+    elif [[ -n "${NIRI_SOCKET:-}" ]]; then
+      echo "✓ Compositor: Niri" >&2
+      COMPOSITOR="niri"
+    else
+      echo "✗ No supported compositor detected" >&2
+      echo "  Requires: Hyprland, Sway, or Niri" >&2
+      echo "  HYPRLAND_INSTANCE_SIGNATURE: ${HYPRLAND_INSTANCE_SIGNATURE:-unset}" >&2
+      echo "  XDG_CURRENT_DESKTOP: ${XDG_CURRENT_DESKTOP:-unset}" >&2
+      echo "  WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-unset}" >&2
+    fi
+    
+    # 2. Check Noctalia process
+    if pgrep -f "noctalia" >/dev/null 2>&1; then
+      PID=$(pgrep -f "noctalia" | head -1)
+      echo "✓ Noctalia process running (PID: $PID)" >&2
+    else
+      echo "✗ Noctalia not running" >&2
+      if [[ "$COMPOSITOR" == "none" ]]; then
+        echo "  Start requires Wayland compositor" >&2
+      else
+        echo "  Start with: noctalia --daemon" >&2
+      fi
+    fi
+    
+    # 3. Check IPC socket
+    SOCK="${XDG_RUNTIME_DIR:-}/noctalia.sock"
+    if [[ -S "$SOCK" ]]; then
+      echo "✓ IPC socket exists: $SOCK" >&2
+    else
+      echo "✗ IPC socket not found: $SOCK" >&2
+      if [[ -z "${XDG_RUNTIME_DIR:-}" ]]; then
+        echo "  XDG_RUNTIME_DIR is not set" >&2
+      fi
+    fi
+    
+    # 4. Test IPC responsiveness
+    IPC_OK=0
+    if timeout 2s noctalia msg status >/dev/null 2>&1; then
+      echo "✓ IPC responding (msg status)" >&2
+      IPC_OK=1
+    else
+      echo "✗ IPC not responding or timed out" >&2
+    fi
+    
+    # 5. Check theme utilities
+    THEME_TOOL="none"
+    if command -v gsettings &>/dev/null; then
+      echo "✓ gsettings available" >&2
+      THEME_TOOL="gsettings"
+    elif command -v dconf &>/dev/null; then
+      echo "✓ dconf available (fallback)" >&2
+      THEME_TOOL="dconf"
+    else
+      echo "⚠ gsettings/dconf not found" >&2
+      echo "  Theme portal verification will be limited" >&2
+    fi
+    
+    # 6. Check busctl
+    if command -v busctl &>/dev/null; then
+      echo "✓ busctl available" >&2
+    else
+      echo "⚠ busctl not found (portal monitoring limited)" >&2
+    fi
+    
+    echo "" >&2
+    echo "=== Doctor Summary ===" >&2
+    echo "Compositor: $COMPOSITOR" >&2
+    echo "Noctalia IPC: $([ $IPC_OK -eq 1 ] && echo 'READY' || echo 'NOT READY')" >&2
+    echo "Theme tools: $THEME_TOOL" >&2
+    echo "" >&2
+    
+    # Determine exit code
+    if [[ "$COMPOSITOR" == "none" ]]; then
+      echo "STATUS: INCONCLUSIVE (no compositor detected)" >&2
+      echo "Verification requires Hyprland, Sway, or Niri compositor." >&2
+      exit 2
+    elif [[ $IPC_OK -eq 0 ]]; then
+      echo "STATUS: INCONCLUSIVE (Noctalia not responding)" >&2
+      echo "Start Noctalia with: noctalia --daemon" >&2
+      exit 2
+    else
+      echo "STATUS: PASS" >&2
+      exit 0
+    fi
+    ;;
+    
   ping)
     if noctalia msg status >/dev/null 2>&1; then
       echo "PONG"
@@ -111,6 +211,161 @@ case "$CMD" in
     noctalia msg notification-dnd-toggle
     ;;
     
+  feature)
+    FEATURE_NAME="${2:-}"
+    shift 2 || shift 1
+    
+    if [[ -z "$FEATURE_NAME" ]]; then
+      echo "Usage: control-noctalia feature <feature-name> [--evidence-dir DIR] [--no-cleanup]" >&2
+      exit 1
+    fi
+    
+    # Parse options
+    EVIDENCE_DIR="/tmp/noctalia-verify-evidence"
+    NO_CLEANUP=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --evidence-dir)
+          EVIDENCE_DIR="$2"
+          shift 2
+          ;;
+        --no-cleanup)
+          NO_CLEANUP=1
+          shift
+          ;;
+        *)
+          shift
+          ;;
+      esac
+    done
+    
+    # Run feature-specific test
+    case "$FEATURE_NAME" in
+      theme-mode-toggle)
+        # Check prerequisites
+        if ! command -v noctalia &>/dev/null; then
+          echo "INCONCLUSIVE: noctalia binary not found in PATH" >&2
+          exit 2
+        fi
+        
+        # Check compositor
+        if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}${NIRI_SOCKET:-}" ]] && \
+           ! (command -v swaymsg &>/dev/null && swaymsg -t get_version &>/dev/null 2>&1); then
+          echo "INCONCLUSIVE: No compositor detected (requires Hyprland/Sway/Niri)" >&2
+          exit 2
+        fi
+        
+        # Check IPC
+        if ! timeout 2s noctalia msg status >/dev/null 2>&1; then
+          echo "INCONCLUSIVE: Noctalia IPC not responding" >&2
+          exit 2
+        fi
+        
+        # Check theme tools
+        if ! command -v gsettings &>/dev/null && ! command -v dconf &>/dev/null; then
+          echo "INCONCLUSIVE: Neither gsettings nor dconf available" >&2
+          exit 2
+        fi
+        
+        # Create evidence directory
+        TEST_DIR="$EVIDENCE_DIR/theme-toggle-$(date +%s)"
+        mkdir -p "$TEST_DIR"
+        
+        echo "=== Theme Mode Toggle Test ===" | tee "$TEST_DIR/test.log"
+        echo "Evidence: $TEST_DIR" | tee -a "$TEST_DIR/test.log"
+        echo "" | tee -a "$TEST_DIR/test.log"
+        
+        # 1. Get initial mode
+        INITIAL_MODE=$(noctalia msg theme-mode-get 2>&1)
+        echo "Initial mode: $INITIAL_MODE" | tee -a "$TEST_DIR/test.log"
+        echo "$INITIAL_MODE" > "$TEST_DIR/initial-mode.txt"
+        
+        # 2. Capture before state
+        if command -v gsettings &>/dev/null; then
+          gsettings get org.gnome.desktop.interface gtk-theme 2>&1 > "$TEST_DIR/before-gtk-theme.txt" || echo "N/A" > "$TEST_DIR/before-gtk-theme.txt"
+          gsettings get org.gnome.desktop.interface color-scheme 2>&1 > "$TEST_DIR/before-color-scheme.txt" || echo "N/A" > "$TEST_DIR/before-color-scheme.txt"
+        elif command -v dconf &>/dev/null; then
+          dconf read /org/gnome/desktop/interface/gtk-theme 2>&1 > "$TEST_DIR/before-gtk-theme.txt" || echo "N/A" > "$TEST_DIR/before-gtk-theme.txt"
+          dconf read /org/gnome/desktop/interface/color-scheme 2>&1 > "$TEST_DIR/before-color-scheme.txt" || echo "N/A" > "$TEST_DIR/before-color-scheme.txt"
+        fi
+        
+        BEFORE_SCHEME=$(cat "$TEST_DIR/before-color-scheme.txt")
+        echo "Before color-scheme: $BEFORE_SCHEME" | tee -a "$TEST_DIR/test.log"
+        
+        # 3. Toggle
+        echo "Toggling theme mode..." | tee -a "$TEST_DIR/test.log"
+        noctalia msg theme-mode-toggle 2>&1 | tee "$TEST_DIR/toggle-output.txt" >> "$TEST_DIR/test.log"
+        TOGGLE_EXIT=$?
+        
+        if [[ $TOGGLE_EXIT -ne 0 ]]; then
+          echo "FAIL: theme-mode-toggle command failed with exit code $TOGGLE_EXIT" | tee -a "$TEST_DIR/test.log"
+          echo "FAIL" > "$TEST_DIR/result.txt"
+          exit 1
+        fi
+        
+        # 4. Wait for portal sync
+        sleep 0.5
+        
+        # 5. Capture after state
+        if command -v gsettings &>/dev/null; then
+          gsettings get org.gnome.desktop.interface gtk-theme 2>&1 > "$TEST_DIR/after-gtk-theme.txt" || echo "N/A" > "$TEST_DIR/after-gtk-theme.txt"
+          gsettings get org.gnome.desktop.interface color-scheme 2>&1 > "$TEST_DIR/after-color-scheme.txt" || echo "N/A" > "$TEST_DIR/after-color-scheme.txt"
+        elif command -v dconf &>/dev/null; then
+          dconf read /org/gnome/desktop/interface/gtk-theme 2>&1 > "$TEST_DIR/after-gtk-theme.txt" || echo "N/A" > "$TEST_DIR/after-gtk-theme.txt"
+          dconf read /org/gnome/desktop/interface/color-scheme 2>&1 > "$TEST_DIR/after-color-scheme.txt" || echo "N/A" > "$TEST_DIR/after-color-scheme.txt"
+        fi
+        
+        AFTER_SCHEME=$(cat "$TEST_DIR/after-color-scheme.txt")
+        echo "After color-scheme: $AFTER_SCHEME" | tee -a "$TEST_DIR/test.log"
+        
+        # 6. Verify change
+        NEW_MODE=$(noctalia msg theme-mode-get 2>&1)
+        echo "New mode: $NEW_MODE" | tee -a "$TEST_DIR/test.log"
+        
+        echo "" | tee -a "$TEST_DIR/test.log"
+        
+        if [[ "$BEFORE_SCHEME" == "$AFTER_SCHEME" ]]; then
+          echo "FAIL: Portal color-scheme unchanged ($BEFORE_SCHEME)" | tee -a "$TEST_DIR/test.log"
+          echo "FAIL" > "$TEST_DIR/result.txt"
+          
+          # Restore before reporting failure
+          noctalia msg theme-mode-set "$INITIAL_MODE" >/dev/null 2>&1 || true
+          
+          exit 1
+        fi
+        
+        echo "PASS: Portal color-scheme changed" | tee -a "$TEST_DIR/test.log"
+        echo "  Before: $BEFORE_SCHEME" | tee -a "$TEST_DIR/test.log"
+        echo "  After:  $AFTER_SCHEME" | tee -a "$TEST_DIR/test.log"
+        echo "PASS" > "$TEST_DIR/result.txt"
+        
+        # 7. Restore initial mode
+        noctalia msg theme-mode-set "$INITIAL_MODE" >/dev/null 2>&1 || true
+        echo "Restored initial mode: $INITIAL_MODE" | tee -a "$TEST_DIR/test.log"
+        
+        # 8. Cleanup (unless --no-cleanup)
+        if [[ $NO_CLEANUP -eq 0 ]]; then
+          ARCHIVE="$EVIDENCE_DIR/theme-toggle-$(date +%Y%m%d-%H%M%S).tar.gz"
+          tar -czf "$ARCHIVE" -C "$EVIDENCE_DIR" "$(basename "$TEST_DIR")" 2>/dev/null
+          rm -rf "$TEST_DIR"
+          echo "" | tee -a "$TEST_DIR/test.log"
+          echo "Evidence archived: $ARCHIVE"
+        else
+          echo ""
+          echo "Evidence preserved: $TEST_DIR"
+        fi
+        
+        exit 0
+        ;;
+        
+      *)
+        echo "error: unknown feature: $FEATURE_NAME" >&2
+        echo "Run 'noctalia verify list' to see available features" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+    
   msg)
     shift
     check_responsive
@@ -125,6 +380,8 @@ USAGE:
   control-noctalia <command> [args...]
 
 COMMANDS:
+  doctor [--verbose]             Run environment health check
+  feature <name> [options]       Run feature-specific verification test
   ping                           Test IPC connectivity (returns PONG or ERROR)
   status                         Get full status JSON
   
@@ -148,7 +405,19 @@ COMMANDS:
   
   help                           Show this help
 
+FEATURE TEST OPTIONS:
+  --evidence-dir DIR             Custom evidence directory (default: /tmp/noctalia-verify-evidence)
+  --no-cleanup                   Keep evidence directory after test
+
 EXAMPLES:
+  # Environment check
+  control-noctalia doctor
+  control-noctalia doctor --verbose
+  
+  # Run feature test
+  control-noctalia feature theme-mode-toggle
+  control-noctalia feature theme-mode-toggle --no-cleanup
+  
   # Health check
   control-noctalia ping
   
@@ -171,14 +440,15 @@ EXAMPLES:
   control-noctalia msg bar-toggle
 
 EXIT CODES:
-  0 - Success
-  1 - IPC error or invalid arguments
-  2 - Command-specific failure
+  0 - PASS (test succeeded)
+  1 - FAIL (test failed with compositor present)
+  2 - INCONCLUSIVE (missing compositor, Noctalia not running, or missing tools)
 
 NOTES:
+  - Doctor and feature tests require Hyprland, Sway, or Niri compositor
   - Requires Noctalia to be running with IPC socket available
   - IPC socket location: $XDG_RUNTIME_DIR/noctalia.sock
-  - All commands have 2-second timeout for IPC responsiveness
+  - Theme tests require gsettings or dconf for portal verification
 
 EOF
     [[ "$CMD" == "help" ]] && exit 0 || exit 1

@@ -15,10 +15,13 @@ Noctalia is a native Wayland desktop shell providing bars, widgets, panels, laun
 
 ### Prerequisites
 
-1. **Running Noctalia instance**: Noctalia must be running and responsive
-2. **Wayland compositor**: Hyprland, Sway, Niri, or compatible compositor
+**Required for PASS result:**
+1. **Wayland compositor**: Hyprland, Sway, or Niri (detection via env vars)
+2. **Running Noctalia instance**: Noctalia must be running and IPC responsive
 3. **XDG_RUNTIME_DIR**: Set for IPC socket communication
-4. **Helper utilities**: `gsettings` or `dconf`, `busctl` for portal verification
+4. **Theme utilities**: `gsettings` or `dconf` for portal verification
+
+**Without compositor or Noctalia**: Tests will exit with code 2 (INCONCLUSIVE), never fake PASS.
 
 ### Starting Noctalia
 
@@ -160,10 +163,14 @@ echo "STATUS: PASS"
 exit 0
 ```
 
+**Exit codes**:
+- `0` (PASS): Compositor detected, Noctalia running, IPC responding
+- `2` (INCONCLUSIVE): Compositor missing or Noctalia not responding
+- `1` (FAIL): Should not occur in doctor (reserved for code errors)
+
 **Expected outcome**: 
-- PASS: All checks green, IPC responding, compositor detected
-- INCONCLUSIVE: Compositor missing or IPC unavailable (VM/headless environment)
-- FAIL: Noctalia not running or unresponsive
+- PASS: Hyprland/Sway/Niri detected, IPC responding, theme tools available
+- INCONCLUSIVE: No compositor or Noctalia not running (VM/headless environment)
 
 ## Drive
 

@@ -9,7 +9,39 @@ This document records the verification attempt performed during skill developmen
 - **Compositor**: None (headless environment)
 - **Noctalia**: Not running (no Wayland display)
 
-## Doctor Check Result: INCONCLUSIVE
+## Doctor Check Result: INCONCLUSIVE (Exit Code 2)
+
+### Test Execution
+
+```bash
+$ cd .cursor/skills/verify-noctalia
+$ ./control-noctalia doctor
+=== Noctalia Doctor Check ===
+
+✗ No supported compositor detected
+  Requires: Hyprland, Sway, or Niri
+  HYPRLAND_INSTANCE_SIGNATURE: unset
+  XDG_CURRENT_DESKTOP: unset
+  WAYLAND_DISPLAY: unset
+✗ Noctalia not running
+  Start requires Wayland compositor
+✗ IPC socket not found: /noctalia.sock
+  XDG_RUNTIME_DIR is not set
+✗ IPC not responding or timed out
+✓ gsettings available
+✓ busctl available
+
+=== Doctor Summary ===
+Compositor: none
+Noctalia IPC: NOT READY
+Theme tools: gsettings
+
+STATUS: INCONCLUSIVE (no compositor detected)
+Verification requires Hyprland, Sway, or Niri compositor.
+
+$ echo $?
+2
+```
 
 ### Available Tools
 
@@ -18,9 +50,9 @@ This document records the verification attempt performed during skill developmen
 ✗ Compositor - Not detected (expected on cloud VM)
 ✗ Noctalia process - Not running (no Wayland session)
 
-### Expected Behavior
+### Expected Behavior on Hyprland
 
-On a Hyprland/Sway/Niri desktop with Noctalia running, the doctor check should return:
+On a Hyprland/Sway/Niri desktop with Noctalia running, the doctor check should return exit code 0 (PASS):
 
 ```
 === Noctalia Doctor Check ===
@@ -40,9 +72,20 @@ Theme tools: gsettings
 STATUS: PASS
 ```
 
-## Feature Test: theme-mode-toggle (INCONCLUSIVE)
+## Feature Test: theme-mode-toggle (INCONCLUSIVE, Exit Code 2)
 
-Cannot execute without running Noctalia instance. Expected test flow:
+### Test Execution
+
+```bash
+$ cd .cursor/skills/verify-noctalia
+$ ./control-noctalia feature theme-mode-toggle
+INCONCLUSIVE: No compositor detected (requires Hyprland/Sway/Niri)
+
+$ echo $?
+2
+```
+
+Cannot execute without running Noctalia instance and compositor. Expected test flow on Hyprland:
 
 1. Capture initial theme mode: `noctalia msg theme-mode-get`
 2. Capture portal state: `gsettings get org.gnome.desktop.interface color-scheme`
@@ -66,49 +109,33 @@ cd /path/to/noctalia/.cursor/skills/verify-noctalia
 
 # Quick health check
 ./control-noctalia ping
-# Expected: PONG
+# Expected: PONG (exit 0) or ERROR (exit 1)
 
-# Full doctor check (manual, to be wired to noctalia verify doctor)
-bash -c '
-echo "=== Noctalia Doctor Check ==="
+# Full doctor check (wired to noctalia verify doctor)
+./control-noctalia doctor
 
-# Check compositor
-if [[ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
-  echo "✓ Compositor: Hyprland"
-  COMPOSITOR="hyprland"
-else
-  echo "✗ No compositor"
-  COMPOSITOR="none"
-fi
+# Expected output on Hyprland with Noctalia running:
+# === Noctalia Doctor Check ===
+# ✓ Compositor: Hyprland
+# ✓ Noctalia process running (PID: XXXX)
+# ✓ IPC socket exists: /run/user/1000/noctalia.sock
+# ✓ IPC responding (msg status)
+# ✓ gsettings available
+# ✓ busctl available
+# 
+# === Doctor Summary ===
+# Compositor: hyprland
+# Noctalia IPC: READY
+# Theme tools: gsettings
+# 
+# STATUS: PASS
 
-# Check Noctalia process
-if pgrep -f "noctalia" >/dev/null; then
-  echo "✓ Noctalia running (PID: $(pgrep -f noctalia | head -1))"
-else
-  echo "✗ Noctalia not running"
-  exit 1
-fi
+# Check exit code
+echo $?
+# Expected: 0 (PASS) or 2 (INCONCLUSIVE)
 
-# Check IPC socket
-SOCK="${XDG_RUNTIME_DIR}/noctalia.sock"
-if [[ -S "$SOCK" ]]; then
-  echo "✓ IPC socket: $SOCK"
-else
-  echo "✗ IPC socket not found"
-  exit 1
-fi
-
-# Test IPC
-if timeout 2s noctalia msg status >/dev/null 2>&1; then
-  echo "✓ IPC responding"
-else
-  echo "✗ IPC timeout"
-  exit 1
-fi
-
-echo ""
-echo "STATUS: PASS"
-'
+# Or use via CLI
+noctalia verify doctor
 ```
 
 ### Run Theme Mode Toggle Test
@@ -116,50 +143,42 @@ echo "STATUS: PASS"
 ```bash
 cd /path/to/noctalia/.cursor/skills/verify-noctalia
 
-EVIDENCE_DIR="/tmp/noctalia-verify-evidence/theme-toggle-$(date +%s)"
-mkdir -p "$EVIDENCE_DIR"
+# Run automated test
+./control-noctalia feature theme-mode-toggle
 
-# 1. Save initial mode
-INITIAL_MODE=$(./control-noctalia get-theme-mode)
-echo "$INITIAL_MODE" > "$EVIDENCE_DIR/initial-mode.txt"
+# Expected output on Hyprland:
+# === Theme Mode Toggle Test ===
+# Evidence: /tmp/noctalia-verify-evidence/theme-toggle-TIMESTAMP
+# 
+# Initial mode: dark
+# Before color-scheme: 'prefer-dark'
+# Toggling theme mode...
+# After color-scheme: 'prefer-light'
+# New mode: light
+# 
+# PASS: Portal color-scheme changed
+#   Before: 'prefer-dark'
+#   After:  'prefer-light'
+# Restored initial mode: dark
+# 
+# Evidence archived: /tmp/noctalia-verify-evidence/theme-toggle-TIMESTAMP.tar.gz
 
-# 2. Capture before-state
-gsettings get org.gnome.desktop.interface gtk-theme > "$EVIDENCE_DIR/before-gtk-theme.txt"
-gsettings get org.gnome.desktop.interface color-scheme > "$EVIDENCE_DIR/before-color-scheme.txt"
+# Check exit code
+echo $?
+# Expected: 0 (PASS), 1 (FAIL), or 2 (INCONCLUSIVE)
 
-# 3. Toggle
-./control-noctalia toggle-theme-mode | tee "$EVIDENCE_DIR/toggle-output.txt"
+# Keep evidence with --no-cleanup
+./control-noctalia feature theme-mode-toggle --no-cleanup
+# Evidence preserved: /tmp/noctalia-verify-evidence/theme-toggle-TIMESTAMP
 
-# 4. Wait for portal sync
-sleep 0.5
-
-# 5. Capture after-state
-gsettings get org.gnome.desktop.interface gtk-theme > "$EVIDENCE_DIR/after-gtk-theme.txt"
-gsettings get org.gnome.desktop.interface color-scheme > "$EVIDENCE_DIR/after-color-scheme.txt"
-
-# 6. Verify change
-BEFORE=$(cat "$EVIDENCE_DIR/before-color-scheme.txt")
-AFTER=$(cat "$EVIDENCE_DIR/after-color-scheme.txt")
-
-echo ""
-echo "=== Verification Result ==="
-echo "Before: $BEFORE"
-echo "After:  $AFTER"
-
-if [[ "$BEFORE" != "$AFTER" ]]; then
-  echo "✓ PASS: Portal color-scheme changed"
-  echo "PASS" > "$EVIDENCE_DIR/result.txt"
-else
-  echo "✗ FAIL: Portal color-scheme unchanged"
-  echo "FAIL" > "$EVIDENCE_DIR/result.txt"
-fi
-
-# 7. Restore
-./control-noctalia set-theme-mode "$INITIAL_MODE"
-
-echo ""
-echo "Evidence saved: $EVIDENCE_DIR"
+# Or use via CLI
+noctalia verify feature theme-mode-toggle
 ```
+
+**Exit Code Meanings:**
+- `0` (PASS): Theme mode and portal color-scheme both changed
+- `1` (FAIL): Compositor present but portal did not change (indicates bug)
+- `2` (INCONCLUSIVE): No compositor, Noctalia not running, or missing gsettings/dconf
 
 ## Skill Files
 

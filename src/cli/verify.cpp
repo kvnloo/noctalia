@@ -50,25 +50,22 @@ namespace noctalia::cli {
 
       const bool verbose = args.has("--verbose");
       std::string cmd = skill / "control-noctalia";
-      cmd += " ping";
+      cmd += " doctor";
       
       if (verbose) {
-        std::println("Running doctor check from: {}", skill.string());
+        cmd += " --verbose";
       }
-
-      // For now, just run a basic ping test
-      // Full doctor implementation would exec a shell script from the skill directory
+      
+      // Run the doctor subcommand which handles compositor detection and exit codes
       const int result = std::system(cmd.c_str());
-      if (result == 0) {
-        std::println("Doctor check: PASS");
-        return 0;
-      } else if (WEXITSTATUS(result) == 2) {
-        std::println("Doctor check: INCONCLUSIVE (compositor not available)");
-        return 2;
-      } else {
-        std::println("Doctor check: FAIL");
+      
+      if (result == -1) {
+        std::println(stderr, "error: failed to execute doctor check");
         return 1;
       }
+      
+      // Return the exact exit code from control-noctalia doctor
+      return WEXITSTATUS(result);
     }
 
     int runFeatureTest(const ParsedArgs& args) {
@@ -85,13 +82,32 @@ namespace noctalia::cli {
         return 1;
       }
 
-      std::println("Feature verification not yet implemented: {}", featureName);
-      std::println("Skill location: {}", skill.string());
-      std::println("To run manually:");
-      std::println("  cd {}", skill.string());
-      std::println("  ./control-noctalia <command>");
+      // Build command to run feature test script
+      std::string cmd = skill / "control-noctalia";
+      cmd += " feature ";
+      cmd += featureName;
       
-      return 0;
+      const bool noCleanup = args.has("--no-cleanup");
+      if (noCleanup) {
+        cmd += " --no-cleanup";
+      }
+      
+      const std::string_view evidenceDir = args.value("--evidence-dir");
+      if (!evidenceDir.empty()) {
+        cmd += " --evidence-dir ";
+        cmd += evidenceDir;
+      }
+      
+      // Run the feature test
+      const int result = std::system(cmd.c_str());
+      
+      if (result == -1) {
+        std::println(stderr, "error: failed to execute feature test");
+        return 1;
+      }
+      
+      // Return the exact exit code from the feature test
+      return WEXITSTATUS(result);
     }
 
     int listFeatures() {
