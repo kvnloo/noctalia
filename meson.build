@@ -982,6 +982,7 @@ _noctalia_sources = files(
   'src/cli/completions.cpp',
   'src/cli/parse.cpp',
   'src/cli/help.cpp',
+  'src/cli/verify.cpp',
   'src/theme/cli.cpp',
   'src/ipc/cli.cpp',
 )

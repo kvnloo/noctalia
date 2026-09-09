@@ -7,6 +7,7 @@
 #include "cli/schema_msg.h"
 #include "cli/schema_plugins.h"
 #include "cli/schema_theme.h"
+#include "cli/schema_verify.h"
 
 #include <array>
 
@@ -36,7 +37,7 @@ namespace noctalia::cli {
   };
 
   inline constexpr std::array kRootSubcommands{
-      kCompletionsCmd, kConfigCmd, kDmenuCmd, kFirefoxThemeCmd, kMsgCmd, kPluginsCmd, kThemeCmd,
+      kCompletionsCmd, kConfigCmd, kDmenuCmd, kFirefoxThemeCmd, kMsgCmd, kPluginsCmd, kThemeCmd, kVerifyCmd,
   };
 
   inline constexpr Command kRootCmd{

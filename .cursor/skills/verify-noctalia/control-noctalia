@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# control-noctalia - IPC wrapper for Noctalia verification
+# Part of the verify-noctalia skill
+
+set -euo pipefail
+
+CMD="${1:-help}"
+
+# Helper: Check if Noctalia is responsive
+check_responsive() {
+  if ! timeout 2s noctalia msg status >/dev/null 2>&1; then
+    echo "ERROR: Noctalia IPC not responding" >&2
+    echo "Ensure Noctalia is running: pgrep noctalia" >&2
+    exit 1
+  fi
+}
+
+case "$CMD" in
+  ping)
+    if noctalia msg status >/dev/null 2>&1; then
+      echo "PONG"
+      exit 0
+    else
+      echo "ERROR: IPC not responding"
+      exit 1
+    fi
+    ;;
+    
+  status)
+    check_responsive
+    noctalia msg status
+    ;;
+    
+  get-theme-mode)
+    check_responsive
+    noctalia msg theme-mode-get
+    ;;
+    
+  toggle-theme-mode)
+    check_responsive
+    noctalia msg theme-mode-toggle
+    ;;
+    
+  set-theme-mode)
+    MODE="${2:-}"
+    if [[ -z "$MODE" ]]; then
+      echo "Usage: control-noctalia set-theme-mode <dark|light|auto>" >&2
+      exit 1
+    fi
+    check_responsive
+    noctalia msg theme-mode-set "$MODE"
+    ;;
+    
+  open-panel)
+    PANEL="${2:-}"
+    CONTEXT="${3:-}"
+    if [[ -z "$PANEL" ]]; then
+      echo "Usage: control-noctalia open-panel <panel-id> [context]" >&2
+      exit 1
+    fi
+    check_responsive
+    if [[ -n "$CONTEXT" ]]; then
+      noctalia msg panel-open "$PANEL" "$CONTEXT"
+    else
+      noctalia msg panel-open "$PANEL"
+    fi
+    ;;
+    
+  toggle-panel)
+    PANEL="${2:-}"
+    CONTEXT="${3:-}"
+    if [[ -z "$PANEL" ]]; then
+      echo "Usage: control-noctalia toggle-panel <panel-id> [context]" >&2
+      exit 1
+    fi
+    check_responsive
+    if [[ -n "$CONTEXT" ]]; then
+      noctalia msg panel-toggle "$PANEL" "$CONTEXT"
+    else
+      noctalia msg panel-toggle "$PANEL"
+    fi
+    ;;
+    
+  close-panel)
+    PANEL="${2:-}"
+    check_responsive
+    if [[ -n "$PANEL" ]]; then
+      noctalia msg panel-close "$PANEL"
+    else
+      noctalia msg panel-close
+    fi
+    ;;
+    
+  get-dnd)
+    check_responsive
+    noctalia msg notification-dnd-status
+    ;;
+    
+  set-dnd)
+    STATE="${2:-}"
+    if [[ -z "$STATE" ]]; then
+      echo "Usage: control-noctalia set-dnd <on|off|true|false|1|0>" >&2
+      exit 1
+    fi
+    check_responsive
+    noctalia msg notification-dnd-set "$STATE"
+    ;;
+    
+  toggle-dnd)
+    check_responsive
+    noctalia msg notification-dnd-toggle
+    ;;
+    
+  msg)
+    shift
+    check_responsive
+    noctalia msg "$@"
+    ;;
+    
+  help|*)
+    cat <<'EOF'
+control-noctalia - Noctalia IPC helper for verification
+
+USAGE:
+  control-noctalia <command> [args...]
+
+COMMANDS:
+  ping                           Test IPC connectivity (returns PONG or ERROR)
+  status                         Get full status JSON
+  
+  Theme commands:
+  get-theme-mode                 Get current theme mode (dark/light/auto)
+  set-theme-mode <mode>          Set theme mode explicitly
+  toggle-theme-mode              Toggle between dark and light
+  
+  Panel commands:
+  open-panel <id> [context]      Open panel by ID (e.g., launcher, control-center)
+  toggle-panel <id> [context]    Toggle panel by ID
+  close-panel [id]               Close active panel or named panel
+  
+  Notification commands:
+  get-dnd                        Get Do Not Disturb status
+  set-dnd <state>                Set DND (on/off/true/false/1/0)
+  toggle-dnd                     Toggle DND mode
+  
+  Raw IPC:
+  msg <cmd> [args...]            Pass-through to noctalia msg
+  
+  help                           Show this help
+
+EXAMPLES:
+  # Health check
+  control-noctalia ping
+  
+  # Theme operations
+  control-noctalia toggle-theme-mode
+  control-noctalia get-theme-mode
+  control-noctalia set-theme-mode dark
+  
+  # Panel operations
+  control-noctalia open-panel launcher
+  control-noctalia toggle-panel control-center audio
+  control-noctalia close-panel
+  
+  # Notification operations
+  control-noctalia set-dnd on
+  control-noctalia toggle-dnd
+  
+  # Raw IPC
+  control-noctalia msg status
+  control-noctalia msg bar-toggle
+
+EXIT CODES:
+  0 - Success
+  1 - IPC error or invalid arguments
+  2 - Command-specific failure
+
+NOTES:
+  - Requires Noctalia to be running with IPC socket available
+  - IPC socket location: $XDG_RUNTIME_DIR/noctalia.sock
+  - All commands have 2-second timeout for IPC responsiveness
+
+EOF
+    [[ "$CMD" == "help" ]] && exit 0 || exit 1
+    ;;
+esac
