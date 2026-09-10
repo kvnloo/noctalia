@@ -672,6 +672,17 @@ void MainLoop::run() {
     }
     logSlowMainLoopOperation(ms, "queued surface rendering took {:.1F}ms", ms);
 
+    // Dispatch any Mesa EGL events queued during rendering (fixes dmabuf format_table FD leak).
+    // eglSwapBuffers can trigger internal Mesa Wayland protocol traffic on the default queue
+    // (e.g. linux_dmabuf format_table cleanup). Dispatch it now so FDs don't accumulate.
+    if (hadRenders && dispatchPendingGuarded(m_wayland.display()) < 0) {
+      const int dispatchErrno = errno;
+      if (handleWaylandDisconnect(m_wayland, "failed to dispatch Mesa EGL events after rendering", dispatchErrno)) {
+        return;
+      }
+      throwWaylandFailure(m_wayland, "failed to dispatch Mesa EGL events after rendering", dispatchErrno);
+    }
+
     maybeReportIdleProfile();
   }
 
