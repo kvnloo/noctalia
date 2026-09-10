@@ -1322,6 +1322,9 @@ namespace {
           shellX -= underlayX;
           shellY -= underlayY;
           const float shellMainStart = isVertical ? shellY : shellX;
+          const float scale = run.contentScale;
+          const float crossInset = kGroupHoverCrossInset * scale;
+          const float crossExtent = std::max(0.0F, capsuleCross - 2.0F * crossInset);
           const Widget* radiusSource = !run.widgets.empty() ? run.widgets.front() : nullptr;
           for (Widget* widget : run.widgets) {
             Node* root = widget != nullptr ? widget->outerNode() : nullptr;
@@ -1345,11 +1348,11 @@ namespace {
             const float mainStart = shellMainStart + member.sliceStart;
             const float mainEnd = shellMainStart + member.sliceEnd;
             const float mainExtent = std::max(0.0F, mainEnd - mainStart);
-            const float hoverW = isVertical ? capsuleCross : mainExtent;
-            const float hoverH = isVertical ? mainExtent : capsuleCross;
+            const float hoverW = isVertical ? crossExtent : mainExtent;
+            const float hoverH = isVertical ? mainExtent : crossExtent;
             box->setPosition(
-                isVertical ? rootX + (member.width - capsuleCross) * 0.5F : mainStart,
-                isVertical ? mainStart : rootY + (member.height - capsuleCross) * 0.5F
+                isVertical ? rootX + (member.width - crossExtent) * 0.5F : mainStart,
+                isVertical ? mainStart : rootY + (member.height - crossExtent) * 0.5F
             );
             box->setSize(hoverW, hoverH);
             box->setRadius(
