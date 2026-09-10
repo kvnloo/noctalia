@@ -188,5 +188,76 @@ int main() {
     return 1;
   }
 
+  std::vector<std::unique_ptr<Button>> multiButtons;
+  auto btn1 = std::make_unique<Button>();
+  btn1->setText("Very Long Action Label That Should Ellipsize");
+  btn1->setVariant(ButtonVariant::Primary);
+  multiButtons.push_back(std::move(btn1));
+
+  auto btn2 = std::make_unique<Button>();
+  btn2->setText("Another Very Long Action Label");
+  btn2->setVariant(ButtonVariant::Primary);
+  multiButtons.push_back(std::move(btn2));
+
+  const float testMaxWidth = 300.0F;
+  const float testGap = 8.0F;
+  auto rows = wrapButtonsIntoRows(renderer, multiButtons, testMaxWidth, testGap);
+
+  Flex testContainer;
+  populateRowContainer(testContainer, std::move(rows), testMaxWidth, testGap);
+  testContainer.layout(renderer);
+
+  const auto& children = testContainer.children();
+  if (children.empty()) {
+    std::println(stderr, "button_layout_test: no rows created");
+    return 1;
+  }
+
+  const Flex* firstRow = dynamic_cast<const Flex*>(children[0].get());
+  if (firstRow == nullptr) {
+    std::println(stderr, "button_layout_test: first child is not a Flex row");
+    return 1;
+  }
+
+  const auto& rowChildren = firstRow->children();
+  if (rowChildren.size() != 2) {
+    std::println(stderr, "button_layout_test: expected 2 buttons in row, got {}", rowChildren.size());
+    return 1;
+  }
+
+  const Button* firstBtn = dynamic_cast<const Button*>(rowChildren[0].get());
+  const Button* secondBtn = dynamic_cast<const Button*>(rowChildren[1].get());
+  if (firstBtn == nullptr || secondBtn == nullptr) {
+    std::println(stderr, "button_layout_test: row children are not buttons");
+    return 1;
+  }
+
+  const float expectedPerButtonMaxWidth = (testMaxWidth - testGap) / 2.0F;
+  if (!near(firstBtn->maxWidth(), expectedPerButtonMaxWidth)) {
+    std::println(
+        stderr, "button_layout_test: first button maxWidth should be {}, got {}", expectedPerButtonMaxWidth,
+        firstBtn->maxWidth()
+    );
+    return 1;
+  }
+
+  if (!near(secondBtn->maxWidth(), expectedPerButtonMaxWidth)) {
+    std::println(
+        stderr, "button_layout_test: second button maxWidth should be {}, got {}", expectedPerButtonMaxWidth,
+        secondBtn->maxWidth()
+    );
+    return 1;
+  }
+
+  if (firstBtn->label() == nullptr) {
+    std::println(stderr, "button_layout_test: first button has no label");
+    return 1;
+  }
+
+  if (firstBtn->label()->maxWidth() <= 0.0F) {
+    std::println(stderr, "button_layout_test: first button label maxWidth not set");
+    return 1;
+  }
+
   return 0;
 }
