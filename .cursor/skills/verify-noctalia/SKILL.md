@@ -1,3 +1,8 @@
+---
+name: verify-noctalia
+description: Launch, doctor, drive, and capture evidence for Noctalia Wayland shell features (bar, panels, notifications, wallpaper, theme-mode). Use when proving Noctalia behavior live or aligning skill IPC to staging.
+---
+
 # Noctalia Verification Skill
 
 **Purpose**: Launch, verify, drive, and capture evidence from the Noctalia Wayland desktop shell.
@@ -87,7 +92,7 @@ noctalia verify doctor [--verbose]
 2. **Noctalia Process**: Checks if `noctalia` is running
 3. **IPC Socket**: Verifies socket exists at `$XDG_RUNTIME_DIR/noctalia.sock`
 4. **IPC Responsiveness**: Tests `noctalia msg status` command
-5. **Theme Tools**: Checks for `gsettings` or `dconf` availability
+5. **Theme Tools**: Notes `gsettings`/`dconf` if present (optional; theme feature PASS is IPC-only)
 6. **Portal Tools**: Checks for `busctl` for D-Bus monitoring
 
 ### Exit Codes
@@ -132,7 +137,7 @@ Tests the dark ↔ light theme toggle with portal verification:
 
 **Test Steps:**
 1. Checks prerequisites (compositor, Noctalia IPC, theme tools)
-2. Captures initial theme mode and portal state (gsettings/dconf)
+2. Captures resolved theme mode via `theme-mode-get` (light|dark); portal optional
 3. Executes `noctalia msg theme-mode-toggle`
 4. Waits 0.5s for portal sync
 5. Verifies `color-scheme` changed in portal

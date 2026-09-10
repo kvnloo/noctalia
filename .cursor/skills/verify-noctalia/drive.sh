@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drive — Execute feature test scenarios
+# Drive — thin IPC harness for feature smoke (align to staging docs/user/ipc)
 
 set -euo pipefail
 
@@ -10,104 +10,85 @@ usage() {
     cat <<EOF
 Usage: $0 <feature> [OPTIONS]
 
-Execute Noctalia feature test scenarios via IPC.
-
 FEATURES:
-  bar                  Bar visibility and widgets
-  control-center       Control center panels
-  notifications        Notification toasts and history
-  wallpaper            Wallpaper management
-  launcher             Launcher search and providers
+  bar                  bar-show|hide|toggle
+  control-center       panel-open|close|toggle control-center
+  notifications        notification-show smoke
+  wallpaper            wallpaper-get|next|previous|random | panel-toggle wallpaper
+  launcher             panel-open|close|toggle launcher
+  theme-mode-toggle    theme-mode-toggle (+ resolved get)
 
 OPTIONS:
-  --action=ACTION      Specific action (e.g., toggle, show, hide)
-  --id=ID              Target ID (e.g., bar name)
+  --action=ACTION      Feature-specific action
+  --id=ID              Optional bar name / monitor selector
   --help               Show this help
-
-EXAMPLES:
-  $0 bar --action=toggle --id=main
-  $0 notifications --test-notify
-  $0 launcher --action=open
-
 EOF
 }
 
 ipc_send() {
     local cmd="$1"
     local binary="$REPO_ROOT/build-debug/noctalia"
-    
     if [[ ! -x "$binary" ]]; then
-        echo "[ERROR] Noctalia binary not found"
-        return 1
+        if command -v noctalia >/dev/null 2>&1; then
+            binary="$(command -v noctalia)"
+        else
+            echo "[ERROR] Noctalia binary not found"
+            return 1
+        fi
     fi
-    
     echo "[IPC] $cmd"
+    # shellcheck disable=SC2086
     "$binary" msg $cmd
 }
 
 drive_bar() {
     local action="toggle"
-    local id="main"
-    
+    local id=""
     for arg in "$@"; do
         case "$arg" in
             --action=*) action="${arg#*=}" ;;
             --id=*) id="${arg#*=}" ;;
         esac
     done
-    
     case "$action" in
-        toggle) ipc_send "bar-toggle $id" ;;
-        show) ipc_send "bar-show $id" ;;
-        hide) ipc_send "bar-hide $id" ;;
+        toggle) ipc_send "bar-toggle ${id}" ;;
+        show) ipc_send "bar-show ${id}" ;;
+        hide) ipc_send "bar-hide ${id}" ;;
         *) echo "[ERROR] Unknown action: $action"; return 1 ;;
     esac
 }
 
 drive_notifications() {
-    local action="test-notify"
-    
-    for arg in "$@"; do
-        case "$arg" in
-            --test-notify) action="test-notify" ;;
-        esac
-    done
-    
-    case "$action" in
-        test-notify)
-            ipc_send 'notification-show "Verification Test" "This is a test notification from verify-noctalia skill"'
-            ;;
-        *) echo "[ERROR] Unknown action: $action"; return 1 ;;
-    esac
+    ipc_send 'notification-show "Verification Test" "This is a test notification from verify-noctalia skill"'
 }
 
 drive_wallpaper() {
     local action="list"
-    
+    local id=""
     for arg in "$@"; do
         case "$arg" in
             --list) action="list" ;;
+            --action=*) action="${arg#*=}" ;;
+            --id=*) id="${arg#*=}" ;;
         esac
     done
-    
     case "$action" in
-        list)
-            echo "[INFO] Opening wallpaper picker..."
-            ipc_send "panel-open wallpaper"
-            ;;
+        list|picker) ipc_send "panel-toggle wallpaper" ;;
+        get) ipc_send "wallpaper-get ${id}" ;;
+        next) ipc_send "wallpaper-next ${id}" ;;
+        previous|prev) ipc_send "wallpaper-previous ${id}" ;;
+        random) ipc_send "wallpaper-random ${id}" ;;
         *) echo "[ERROR] Unknown action: $action"; return 1 ;;
     esac
 }
 
 drive_launcher() {
     local action="open"
-    
     for arg in "$@"; do
         case "$arg" in
             --action=*) action="${arg#*=}" ;;
         esac
     done
-    
     case "$action" in
         open) ipc_send "panel-open launcher" ;;
         close) ipc_send "panel-close launcher" ;;
@@ -117,20 +98,26 @@ drive_launcher() {
 }
 
 drive_control_center() {
-    local action="open"
-    
+    local action="toggle"
+    local tab=""
     for arg in "$@"; do
         case "$arg" in
             --action=*) action="${arg#*=}" ;;
+            --tab=*) tab="${arg#*=}" ;;
         esac
     done
-    
     case "$action" in
-        open) ipc_send "panel-open control-center" ;;
+        open) ipc_send "panel-open control-center ${tab}" ;;
         close) ipc_send "panel-close control-center" ;;
-        toggle) ipc_send "panel-toggle control-center" ;;
+        toggle) ipc_send "panel-toggle control-center ${tab}" ;;
         *) echo "[ERROR] Unknown action: $action"; return 1 ;;
     esac
+}
+
+drive_theme_mode_toggle() {
+    ipc_send "theme-mode-get"
+    ipc_send "theme-mode-toggle"
+    ipc_send "theme-mode-get"
 }
 
 main() {
@@ -138,16 +125,15 @@ main() {
         usage
         exit 1
     fi
-    
     local feature="$1"
     shift
-    
     case "$feature" in
         bar) drive_bar "$@" ;;
         notifications) drive_notifications "$@" ;;
         wallpaper) drive_wallpaper "$@" ;;
         launcher) drive_launcher "$@" ;;
         control-center) drive_control_center "$@" ;;
+        theme-mode-toggle) drive_theme_mode_toggle "$@" ;;
         --help|-h) usage; exit 0 ;;
         *) echo "[ERROR] Unknown feature: $feature"; usage; exit 1 ;;
     esac
