@@ -1,85 +1,43 @@
 # Noctalia Feature Test Scenarios
 
-This directory contains detailed test scenarios for verifying Noctalia features.
+This directory is the maintained source for verifying user-facing Noctalia behavior. Read the index before driving the shell, then use the matching feature file.
 
 ## Feature Index
 
-1. **[bar.md](bar.md)** — Bar visibility, widgets, multi-monitor configuration
-2. **[control-center.md](control-center.md)** — Control center panels, quick settings, network/bluetooth
-3. **[notifications.md](notifications.md)** — Notification toasts, history, urgency levels, filtering
-4. **[wallpaper.md](wallpaper.md)** — Wallpaper picker, multi-monitor setup, automation
+1. **[bar.md](bar.md)** — Bar visibility, reserve space, auto-hide, layer
+2. **[control-center.md](control-center.md)** — Control center panel + tabs
+3. **[notifications.md](notifications.md)** — Toasts, DND, history, clear/invoke
+4. **[wallpaper.md](wallpaper.md)** — Wallpaper get/set/next/previous/random + picker
 5. **[launcher.md](launcher.md)** — Launcher search, app launch, calculator, emoji picker
+6. **[theme-mode-toggle.md](theme-mode-toggle.md)** — Dark ↔ light theme mode via IPC
 
 ## How to Use
 
-Each feature file documents:
-- **Commands**: IPC commands to exercise the feature
-- **Expected Behavior**: Observable UI changes, state transitions
-- **Evidence**: Screenshots, logs, state dumps to capture as proof
-- **Failure Modes**: Common issues and how to diagnose
+Each feature file uses the four-H2 template:
+
+1. **Sub-features** — named slices to prove
+2. **How to get to it (user POV)** — UI / IPC entry points
+3. **Driving it with control-noctalia** — literal recipes + evidence
+4. **Gotchas** — staging IPC truth, restore hazards, timing
 
 ### Running a Feature Test
 
 ```bash
 # From repository root
-cd /workspace
-
-# 1. Ensure Noctalia is running
 .cursor/skills/verify-noctalia/launch.sh --daemon
-
-# 2. Execute feature test
 .cursor/skills/verify-noctalia/drive.sh <feature-name>
-
-# 3. Capture evidence
 .cursor/skills/verify-noctalia/snapshot.sh <feature-name>
-
-# 4. Cleanup
 .cursor/skills/verify-noctalia/cleanup.sh
-```
 
-### Example: Testing Bar Feature
-
-```bash
-.cursor/skills/verify-noctalia/launch.sh --daemon
-.cursor/skills/verify-noctalia/drive.sh bar --action=toggle --id=main
-.cursor/skills/verify-noctalia/snapshot.sh bar-toggle
-.cursor/skills/verify-noctalia/cleanup.sh
+# Or the preferred harness
+.cursor/skills/verify-noctalia/control-noctalia doctor
+.cursor/skills/verify-noctalia/control-noctalia feature theme-mode-toggle
 ```
 
 ## Adding New Features
 
 1. Create `new-feature.md` in this directory
-2. Follow the template structure (see existing files)
-3. Update this README index
-4. Add support in `drive.sh` script
-
-## Feature Template Structure
-
-```markdown
-# Feature Name
-
-## Description
-What this feature does in Noctalia.
-
-## IPC Commands
-Commands to drive the feature via `noctalia msg`.
-
-## Test Scenarios
-Step-by-step test cases with expected outcomes.
-
-## Evidence
-What artifacts to capture (screenshots, logs, state).
-
-## Common Issues
-Known failure modes and diagnostics.
-```
-
-## CI Integration
-
-These feature files serve as:
-- Manual testing guides for developers
-- Automated test scenario definitions for CI
-- Documentation of expected behavior
-- Regression test specifications
-
-For automated CI testing, wrap scenarios in test harness scripts that parse the commands and validate expected outcomes.
+2. Use only the four H2s above (no Description/Configuration/Test Scenarios sprawl)
+3. Align IPC verbs to staging docs under `docs/user/ipc/`
+4. Update this README index
+5. Add a thin driver in `drive.sh` / `control-noctalia` when useful
