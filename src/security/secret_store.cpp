@@ -365,6 +365,15 @@ namespace security {
           return invalidRequestResult();
         }
         return withCancellable(cancellation, [&attributes, bytes, &label](GCancellable* cancellable) {
+          const SecretStoreCollectionState collectionState = inspectDefaultCollection(cancellable);
+          if (collectionState == SecretStoreCollectionState::Missing) {
+            return SecretStoreBackendResult{
+                .status = SecretStoreStatus::DeniedOrLocked,
+                .errorCategory = SecretStoreErrorCategory::Locked,
+                .defaultCollectionState = collectionState,
+            };
+          }
+
           auto table = makeAttributes(attributes);
           const char* data = bytes.empty() ? "" : reinterpret_cast<const char*>(bytes.data());
           SecretValuePtr value(
