@@ -648,14 +648,12 @@ void Application::initStyleThemeAndWayland() {
     lastResolvedThemeMode = resolvedMode;
     const bool colorsChanged = !lastGeneratedPalette.has_value() || *lastGeneratedPalette != generated;
     lastGeneratedPalette = generated;
-    m_templateApplyService.setAfterApplyCallback(
-        [this, resolvedMode, colorsChanged]() {
-          syncGSettingsColorScheme(resolvedMode);
-          if (colorsChanged) {
-            m_hookManager.fire(HookKind::ColorsChanged);
-          }
-        }
-    );
+    m_templateApplyService.setAfterApplyCallback([this, resolvedMode, colorsChanged]() {
+      syncGSettingsColorScheme(resolvedMode);
+      if (colorsChanged) {
+        m_hookManager.fire(HookKind::ColorsChanged);
+      }
+    });
     m_templateApplyService.apply(generated, mode);
     if (previousMode.has_value() && *previousMode != resolvedMode) {
       m_hookManager.fire(

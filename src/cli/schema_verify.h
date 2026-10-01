@@ -8,12 +8,7 @@
 namespace noctalia::cli {
 
   inline constexpr std::array<std::string_view, 6> kVerifyFeatureChoices{
-      "theme-mode-toggle",
-      "panel-toggle",
-      "launcher-workflow",
-      "notification-flow",
-      "bar-widgets",
-      "all",
+      "theme-mode-toggle", "panel-toggle", "launcher-workflow", "notification-flow", "bar-widgets", "all",
   };
 
   inline constexpr std::array kVerifyDoctorFlags{

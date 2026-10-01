@@ -19,24 +19,24 @@ namespace noctalia::cli {
     std::filesystem::path skillPath() {
       // Try to locate the verify-noctalia skill directory
       // Priority: .cursor/skills in workspace, then installed location
-      
+
       const char* pwd = std::getenv("PWD");
       if (pwd != nullptr && pwd[0] != '\0') {
-        const std::filesystem::path workspaceSkill = 
+        const std::filesystem::path workspaceSkill =
             std::filesystem::path(pwd) / ".cursor" / "skills" / "verify-noctalia";
         if (std::filesystem::exists(workspaceSkill / "SKILL.md")) {
           return workspaceSkill;
         }
       }
-      
+
       // Try relative to executable
       std::filesystem::path execPath = std::filesystem::read_symlink("/proc/self/exe");
-      std::filesystem::path relativeSkill = execPath.parent_path().parent_path() / 
-          "share" / "noctalia" / "skills" / "verify-noctalia";
+      std::filesystem::path relativeSkill =
+          execPath.parent_path().parent_path() / "share" / "noctalia" / "skills" / "verify-noctalia";
       if (std::filesystem::exists(relativeSkill / "SKILL.md")) {
         return relativeSkill;
       }
-      
+
       return {};
     }
 
@@ -51,19 +51,19 @@ namespace noctalia::cli {
       const bool verbose = args.has("--verbose");
       std::string cmd = skill / "control-noctalia";
       cmd += " doctor";
-      
+
       if (verbose) {
         cmd += " --verbose";
       }
-      
+
       // Run the doctor subcommand which handles compositor detection and exit codes
       const int result = std::system(cmd.c_str());
-      
+
       if (result == -1) {
         std::println(stderr, "error: failed to execute doctor check");
         return 1;
       }
-      
+
       // Return the exact exit code from control-noctalia doctor
       return WEXITSTATUS(result);
     }
@@ -86,26 +86,26 @@ namespace noctalia::cli {
       std::string cmd = skill / "control-noctalia";
       cmd += " feature ";
       cmd += featureName;
-      
+
       const bool noCleanup = args.has("--no-cleanup");
       if (noCleanup) {
         cmd += " --no-cleanup";
       }
-      
+
       const std::string_view evidenceDir = args.value("--evidence-dir");
       if (!evidenceDir.empty()) {
         cmd += " --evidence-dir ";
         cmd += evidenceDir;
       }
-      
+
       // Run the feature test
       const int result = std::system(cmd.c_str());
-      
+
       if (result == -1) {
         std::println(stderr, "error: failed to execute feature test");
         return 1;
       }
-      
+
       // Return the exact exit code from the feature test
       return WEXITSTATUS(result);
     }
@@ -121,7 +121,7 @@ namespace noctalia::cli {
       std::println("  all                 Run all features sequentially");
       std::println("");
       std::println("Run: noctalia verify feature <feature-name>");
-      
+
       return 0;
     }
 
