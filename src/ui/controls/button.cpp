@@ -895,6 +895,9 @@ void populateRowContainer(
       if (rowButtons.size() == 1) {
         btn->setMaxWidth(maxWidth);
       } else {
+        // Flex assigns each growing button its current share. Button then
+        // derives the label budget from that box, including after a resize.
+        // A construction-time cap would keep labels clipped after expansion.
         btn->setMaxWidth(0.0F);
       }
       btn->setFlexGrow(1.0F);
