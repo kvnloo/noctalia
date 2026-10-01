@@ -895,10 +895,10 @@ void populateRowContainer(
       if (rowButtons.size() == 1) {
         btn->setMaxWidth(maxWidth);
       } else {
-        const std::size_t numButtons = rowButtons.size();
-        const float totalGaps = static_cast<float>(numButtons - 1) * gap;
-        const float perButtonMaxWidth = (maxWidth - totalGaps) / static_cast<float>(numButtons);
-        btn->setMaxWidth(perButtonMaxWidth);
+        // Flex assigns each growing button its current share. Button then
+        // derives the label budget from that box, including after a resize.
+        // A construction-time cap would keep labels clipped after expansion.
+        btn->setMaxWidth(0.0F);
       }
       btn->setFlexGrow(1.0F);
       row->addChild(std::move(btn));

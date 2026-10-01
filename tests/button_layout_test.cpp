@@ -22,7 +22,7 @@ namespace {
         std::string_view text, float fontSize, FontWeight, float maxWidth, int maxLines, TextAlign, std::string_view,
         TextEllipsize, bool
     ) override {
-      constexpr float kAdvance = 10.0F;
+      const float kAdvance = 10.0F * fontSize / Style::fontSizeBody;
       const float natural = static_cast<float>(text.size()) * kAdvance;
       float width = natural;
       int lineCount = text.empty() ? 0 : 1;
@@ -188,76 +188,133 @@ int main() {
     return 1;
   }
 
-  std::vector<std::unique_ptr<Button>> multiButtons;
-  auto btn1 = std::make_unique<Button>();
-  btn1->setText("Very Long Action Label That Should Ellipsize");
-  btn1->setVariant(ButtonVariant::Primary);
-  multiButtons.push_back(std::move(btn1));
+  // Exercise the same vertical, stretching, explicitly-sized container as both
+  // notification toasts and notification history. Long labels that cannot share
+  // a row must remain singleton rows; wrapping is separate from ellipsization.
+  for (const float scale : {0.75F, 1.0F, 1.25F, 2.0F}) {
+    for (const bool rtl : {false, true}) {
+      Style::setRtl(rtl);
+      for (const float padding : {0.0F, Style::spaceXs * scale}) {
+        for (const std::size_t count : {2U, 3U}) {
+          std::vector<std::unique_ptr<Button>> buttons;
+          for (std::size_t i = 0; i < count; ++i) {
+            auto action = std::make_unique<Button>();
+            action->setText(i == 0 ? "A longer action" : "OK");
+            action->setFontSize(Style::fontSizeCaption * scale);
+            buttons.push_back(std::move(action));
+          }
+          const float rowWidth = 300.0F * scale;
+          const float gap = Style::spaceSm * scale;
+          auto rows = wrapButtonsIntoRows(renderer, buttons, rowWidth, gap);
+          if (rows.size() != 1 || rows[0].size() != count || !buttons.empty()) {
+            std::println(stderr, "button_layout_test: actions that fit should share one row");
+            return 1;
+          }
 
-  auto btn2 = std::make_unique<Button>();
-  btn2->setText("Another Very Long Action Label");
-  btn2->setVariant(ButtonVariant::Primary);
-  multiButtons.push_back(std::move(btn2));
+          Flex container;
+          container.setDirection(FlexDirection::Vertical);
+          container.setAlign(FlexAlign::Stretch);
+          container.setPadding(padding);
+          populateRowContainer(container, std::move(rows), rowWidth, gap);
 
-  const float testMaxWidth = 300.0F;
-  const float testGap = 8.0F;
-  auto rows = wrapButtonsIntoRows(renderer, multiButtons, testMaxWidth, testGap);
+          // Repeat unchanged layout and shrink/re-expand the same nodes. A cap
+          // captured during row construction must not override the current box.
+          for (const float width : {300.0F, 300.0F, 400.0F, 220.0F, 300.0F}) {
+            container.setSize(width * scale, 0.0F);
+            container.layout(renderer);
+            const auto* row = dynamic_cast<const Flex*>(container.children()[0].get());
+            if (row == nullptr || row->children().size() != count) {
+              std::println(stderr, "button_layout_test: malformed action row");
+              return 1;
+            }
+            const float expectedRowWidth = width * scale - 2.0F * padding;
+            const float expectedButtonWidth =
+                (expectedRowWidth - gap * static_cast<float>(count - 1)) / static_cast<float>(count);
+            if (!near(row->width(), expectedRowWidth)) {
+              std::println(stderr, "button_layout_test: row did not fill the current inner width");
+              return 1;
+            }
+            for (const auto& child : row->children()) {
+              const auto* action = dynamic_cast<const Button*>(child.get());
+              if (action == nullptr || action->label() == nullptr) {
+                std::println(stderr, "button_layout_test: action row has no button label");
+                return 1;
+              }
+              if (!near(action->width(), expectedButtonWidth)) {
+                std::println(
+                    stderr, "button_layout_test: scale {} RTL {} width {}: expected button width {}, got {}", scale,
+                    rtl, width, expectedButtonWidth, action->width()
+                );
+                return 1;
+              }
+              const float expectedLabelWidth =
+                  std::ceil(expectedButtonWidth - action->paddingLeft() - action->paddingRight());
+              if (!near(action->label()->maxWidth(), expectedLabelWidth)
+                  || action->label()->ellipsize() != TextEllipsize::End
+                  || action->label()->height() > action->label()->fontSize() * 1.5F) {
+                std::println(
+                    stderr,
+                    "button_layout_test: scale {} RTL {} width {}: label budget {} expected {}, height {}, font {}",
+                    scale, rtl, width, action->label()->maxWidth(), expectedLabelWidth, action->label()->height(),
+                    action->label()->fontSize()
+                );
+                return 1;
+              }
+              // Row placement rounds positions; permit that subpixel rounding,
+              // while requiring each button to remain inside the assigned row.
+              if (action->x() < -0.5F || action->x() + action->width() > row->width() + 0.5F) {
+                std::println(stderr, "button_layout_test: action escaped the assigned row");
+                return 1;
+              }
+            }
+          }
+        }
+      }
 
-  Flex testContainer;
-  populateRowContainer(testContainer, std::move(rows), testMaxWidth, testGap);
-  testContainer.layout(renderer);
-
-  const auto& children = testContainer.children();
-  if (children.empty()) {
-    std::println(stderr, "button_layout_test: no rows created");
-    return 1;
+      std::vector<std::unique_ptr<Button>> longButtons;
+      for (const auto text : {"Very Long Action Label That Should Ellipsize", "Another Very Long Action Label"}) {
+        auto action = std::make_unique<Button>();
+        action->setText(text);
+        action->setFontSize(Style::fontSizeCaption * scale);
+        longButtons.push_back(std::move(action));
+      }
+      const float maxWidth = 240.0F * scale;
+      const float gap = Style::spaceSm * scale;
+      auto rows = wrapButtonsIntoRows(renderer, longButtons, maxWidth, gap);
+      if (rows.size() != 2 || rows[0].size() != 1 || rows[1].size() != 1) {
+        std::println(stderr, "button_layout_test: oversized actions should wrap into singleton rows");
+        return 1;
+      }
+      Flex container;
+      container.setDirection(FlexDirection::Vertical);
+      container.setAlign(FlexAlign::Stretch);
+      container.setGap(gap);
+      populateRowContainer(container, std::move(rows), maxWidth, gap);
+      container.setSize(maxWidth, 0.0F);
+      container.layout(renderer);
+      for (const auto& row : container.children()) {
+        const auto* action = dynamic_cast<const Button*>(row->children()[0].get());
+        if (action == nullptr || action->label() == nullptr) {
+          std::println(stderr, "button_layout_test: singleton action has no label");
+          return 1;
+        }
+        const float expectedLabelWidth = std::ceil(maxWidth - action->paddingLeft() - action->paddingRight());
+        if (!near(action->width(), maxWidth)
+            || !near(action->maxWidth(), maxWidth)
+            || !near(action->label()->maxWidth(), expectedLabelWidth)
+            || action->label()->ellipsize() != TextEllipsize::End
+            || action->label()->height() > action->label()->fontSize() * 1.5F) {
+          std::println(
+              stderr, "button_layout_test: singleton scale {} RTL {}: width {} max {} label {} expected {}, height {}",
+              scale, rtl, action->width(), action->maxWidth(), action->label()->maxWidth(), expectedLabelWidth,
+              action->label()->height()
+          );
+          return 1;
+        }
+      }
+    }
   }
-
-  const Flex* firstRow = dynamic_cast<const Flex*>(children[0].get());
-  if (firstRow == nullptr) {
-    std::println(stderr, "button_layout_test: first child is not a Flex row");
-    return 1;
-  }
-
-  const auto& rowChildren = firstRow->children();
-  if (rowChildren.size() != 2) {
-    std::println(stderr, "button_layout_test: expected 2 buttons in row, got {}", rowChildren.size());
-    return 1;
-  }
-
-  const Button* firstBtn = dynamic_cast<const Button*>(rowChildren[0].get());
-  const Button* secondBtn = dynamic_cast<const Button*>(rowChildren[1].get());
-  if (firstBtn == nullptr || secondBtn == nullptr) {
-    std::println(stderr, "button_layout_test: row children are not buttons");
-    return 1;
-  }
-
-  const float expectedPerButtonMaxWidth = (testMaxWidth - testGap) / 2.0F;
-  if (!near(firstBtn->maxWidth(), expectedPerButtonMaxWidth)) {
-    std::println(
-        stderr, "button_layout_test: first button maxWidth should be {}, got {}", expectedPerButtonMaxWidth,
-        firstBtn->maxWidth()
-    );
-    return 1;
-  }
-
-  if (!near(secondBtn->maxWidth(), expectedPerButtonMaxWidth)) {
-    std::println(
-        stderr, "button_layout_test: second button maxWidth should be {}, got {}", expectedPerButtonMaxWidth,
-        secondBtn->maxWidth()
-    );
-    return 1;
-  }
-
-  if (firstBtn->label() == nullptr) {
-    std::println(stderr, "button_layout_test: first button has no label");
-    return 1;
-  }
-
-  if (firstBtn->label()->maxWidth() <= 0.0F) {
-    std::println(stderr, "button_layout_test: first button label maxWidth not set");
-    return 1;
-  }
+  Style::setRtl(false);
 
   return 0;
 }
