@@ -33,7 +33,7 @@ path = "/home/user/Wallpapers/default.png"
 enabled                      = false
 interval_seconds             = 1800
 order                        = "random" # random | alphabetical
-recursive                    = true     # scan subdirectories when selecting random wallpapers
+recursive                    = false    # scan subdirectories when selecting random wallpapers (default: false)
 
 # Per-monitor overrides - same match rules as bar monitor overrides
 # Only active when per_monitor_directories = true
@@ -71,6 +71,8 @@ Selecting a monitor in the panel toolbar switches to that monitor's resolved dir
 
 The launcher's wallpaper provider and **automatic rotation** use the same browse-folder resolution so they stay aligned with the picker. When automation runs with `per_monitor_directories = true`, each monitor picks independently from its own resolved folder.
 
+Recursive scans follow symlinks to folders: the picker with **Flatten** on, the launcher's wallpaper provider, and automatic rotation with `recursive = true`. Each real folder is scanned once, so a symlink back up the tree or a second link to the same folder does not repeat images.
+
 Prefer a color role such as `surface` or `primary` for `fill_color` so wallpaper fallback colors follow the active palette. Fixed hex colors (`#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`) are supported when a non-palette fill is intentional. It is used behind image wallpapers and in uncovered areas for `center`/`fit`. Invalid role names or malformed hex colors are treated as config errors.
 
 Monitor overrides may also set `fill_color`.
@@ -92,7 +94,7 @@ Declare favorites with `[[wallpaper.favorite]]`:
 ```toml
 [[wallpaper.favorite]]
 path = "/home/user/Wallpapers/sunset.jpg"
-theme_mode = "auto"              # auto, light, or dark
+theme_mode = "auto"              # optional: auto, light, or dark
 palette_source = "wallpaper"     # optional: builtin, wallpaper, community, or custom
 wallpaper_scheme = "m3-content"  # when palette_source = wallpaper
 
@@ -105,7 +107,7 @@ builtin_palette = "Noctalia"
 
 The **Theme** and **Colors** row is always available under the toolbar. When no favorited image is selected, those controls persist a live global theme override, the same as changing theme mode or palette source in Settings. When the selected image is already a favorite, adjusting the controls also saves the favorite preset and re-applies that wallpaper with the updated settings.
 
-Starring an image wallpaper bookmarks the path only, except when that image is the wallpaper currently applied to the selected monitor: the favorite is saved with the active `theme_mode`, `palette_source`, and palette selection so re-applying it restores the look you already have. Declarative `color:#RRGGBB` favorites use the same stored theme fields when present. Clicking a favorite applies the wallpaper together with its stored theme settings.
+Starring an image wallpaper bookmarks the path only, except when that image is the wallpaper currently applied to the selected monitor: the favorite is saved with the active `theme_mode`, `palette_source`, and palette selection so re-applying it restores the look you already have. Declarative `color:#RRGGBB` favorites use the same stored theme fields when present. Clicking a favorite applies the wallpaper together with its stored theme settings; a favorite without `theme_mode` or `palette_source` leaves the current theme mode or palette unchanged.
 
 ---
 

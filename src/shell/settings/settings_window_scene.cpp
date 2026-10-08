@@ -592,6 +592,9 @@ namespace {
       const settings::SettingEntry& entry, std::string_view selectedSection, std::string_view selectedBarName,
       std::string_view selectedMonitorOverride
   ) {
+    if (selectedSection == "dock") {
+      return settings::settingEntryMatchesDockNavigation(entry, selectedMonitorOverride);
+    }
     if (selectedSection != "bar") {
       const auto section = settings::settingsSectionFromId(selectedSection);
       return section.has_value() && entry.section == *section;
@@ -614,6 +617,13 @@ namespace {
   std::string pageScopeKey(
       std::string_view selectedSection, std::string_view selectedBarName, std::string_view selectedMonitorOverride
   ) {
+    if (selectedSection == "dock") {
+      std::string key = "dock";
+      if (!selectedMonitorOverride.empty()) {
+        key += ":monitor:" + std::string(selectedMonitorOverride);
+      }
+      return key;
+    }
     if (selectedSection != "bar") {
       return std::string(selectedSection);
     }
@@ -745,7 +755,9 @@ settings::RegistryEnvironment SettingsWindow::buildRegistryEnvironment() const {
   }
   env.niriBackdropSupported = (m_wayland != nullptr && compositors::isNiri());
   env.screencopySupported = m_wayland != nullptr && m_wayland->hasScreencopy();
+  env.backgroundEffectBlurSupported = m_wayland != nullptr && m_wayland->hasBackgroundEffectBlur();
   env.niriOverviewTypeToLaunchSupported = (m_wayland != nullptr && compositors::isNiri());
+  env.umbrielOverviewTypeToLaunchSupported = (m_wayland != nullptr && compositors::isUmbriel());
   env.ddcutilAvailable = (m_dependencies != nullptr && m_dependencies->hasDdcutil());
   env.systemdUserManaged = process::runningUnderSystemdUserManager();
   env.gammaControlAvailable = (m_wayland != nullptr && m_wayland->hasGammaControl());
@@ -802,6 +814,12 @@ settings::RegistryEnvironment SettingsWindow::buildRegistryEnvironment() const {
     }
   }
   env.keyboardLayoutNames = m_wayland != nullptr ? m_wayland->keyboardLayoutNames() : std::vector<std::string>{};
+  env.availableOutputs = availableOutputs();
+  return env;
+}
+
+std::vector<settings::SelectOption> SettingsWindow::availableOutputs() const {
+  std::vector<settings::SelectOption> outputs;
   if (m_wayland != nullptr) {
     for (const auto& output : m_wayland->outputs()) {
       if (output.output == nullptr || output.connectorName.empty()) {
@@ -811,10 +829,10 @@ settings::RegistryEnvironment SettingsWindow::buildRegistryEnvironment() const {
       if (!output.description.empty()) {
         label += " (" + output.description + ")";
       }
-      env.availableOutputs.push_back(settings::SelectOption{output.connectorName, std::move(label)});
+      outputs.push_back(settings::SelectOption{output.connectorName, std::move(label)});
     }
   }
-  return env;
+  return outputs;
 }
 
 void SettingsWindow::syncSelectedBarState(const Config& cfg, const std::vector<std::string>& availableBars) {
@@ -824,12 +842,23 @@ void SettingsWindow::syncSelectedBarState(const Config& cfg, const std::vector<s
     m_selectedBarName = availableBars.front();
   }
 
-  const BarConfig* selectedBar = settings::findBar(cfg, m_selectedBarName);
-  if (selectedBar != nullptr
-      && !m_selectedMonitorOverride.empty()
-      && settings::findMonitorOverride(*selectedBar, m_selectedMonitorOverride) == nullptr) {
-    m_selectedMonitorOverride.clear();
+  if (m_selectedMonitorOverride.empty()) {
+    return;
   }
+  if (m_selectedSection == "dock") {
+    if (settings::findDockMonitorOverride(cfg.dock, m_selectedMonitorOverride) == nullptr) {
+      m_selectedMonitorOverride.clear();
+    }
+    return;
+  }
+  if (m_selectedSection == "bar") {
+    const BarConfig* selectedBar = settings::findBar(cfg, m_selectedBarName);
+    if (selectedBar == nullptr || settings::findMonitorOverride(*selectedBar, m_selectedMonitorOverride) == nullptr) {
+      m_selectedMonitorOverride.clear();
+    }
+    return;
+  }
+  m_selectedMonitorOverride.clear();
 }
 
 std::vector<settings::SelectOption> SettingsWindow::batteryDeviceOptions() const {
@@ -894,7 +923,9 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
       .searchQuery = m_searchQuery,
       .selectedSection = m_selectedSection,
       .selectedBar = selectedBar,
-      .selectedMonitorOverride = selectedMonitorOverride,
+      .selectedMonitorOverride = m_selectedSection == "bar" && selectedMonitorOverride != nullptr
+          ? std::string_view(selectedMonitorOverride->match)
+          : std::string_view(m_selectedMonitorOverride),
       .showAdvanced = m_showAdvanced,
       .showOverriddenOnly = m_showOverriddenOnly,
       .batteryDeviceOptions = batteryDeviceOptions(),
@@ -907,11 +938,20 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
       .pendingGestureKey = m_pendingGestureKey,
       .pendingGestureVerb = m_pendingGestureVerb,
       .actionsExpandedFor = m_actionsExpandedFor,
+      .expandedGroupsByPage = m_expandedSettingGroups,
+      .pageTitleRow = m_pageTitleRow,
+      .groupJumpRow = m_groupJumpRow,
       .actionCatalog = gestureActionCatalog(),
       .requestRebuild = requestRebuild,
       .requestContentRebuild = requestContent,
       .resetContentScroll = [this]() { m_contentScrollState.offset = 0.0F; },
       .setScrollTarget = [this](Node* target) { m_pendingContentScrollTarget = target; },
+      .scrollContentToTop =
+          [this](const Node& target) {
+            if (m_contentScrollView != nullptr) {
+              scrollNodeToScrollViewTop(*m_contentScrollView, target, Style::spaceMd * uiScale());
+            }
+          },
       .focusArea = [this](InputArea* area) { m_inputDispatcher.setFocus(area); },
       .openBarWidgetAddPopup = [this](const std::vector<std::string>& lanePath) { openBarWidgetAddPopup(lanePath); },
       .openSearchPickerPopup =
@@ -990,6 +1030,16 @@ void SettingsWindow::rebuildSettingsContent() {
   while (!m_contentContainer->children().empty()) {
     m_contentContainer->removeChild(m_contentContainer->children().back().get());
   }
+  if (m_pageTitleRow != nullptr) {
+    while (!m_pageTitleRow->children().empty()) {
+      m_pageTitleRow->removeChild(m_pageTitleRow->children().back().get());
+    }
+  }
+  if (m_groupJumpRow != nullptr) {
+    while (!m_groupJumpRow->children().empty()) {
+      m_groupJumpRow->removeChild(m_groupJumpRow->children().back().get());
+    }
+  }
   logSettingsProfile("rebuildContent clear", phaseProfileWatch);
   phaseProfileWatch.reset();
 
@@ -1000,6 +1050,14 @@ void SettingsWindow::rebuildSettingsContent() {
   const BarMonitorOverride* selectedMonitorOverride = nullptr;
   if (selectedBar != nullptr && !m_selectedMonitorOverride.empty()) {
     selectedMonitorOverride = settings::findMonitorOverride(*selectedBar, m_selectedMonitorOverride);
+  }
+  const DockMonitorOverride* selectedDockMonitorOverride = nullptr;
+  if (m_selectedSection == "dock" && !m_selectedMonitorOverride.empty()) {
+    selectedDockMonitorOverride = settings::findDockMonitorOverride(cfg.dock, m_selectedMonitorOverride);
+  }
+  if (cfg.shell.settingsExpandAllGroups != m_expandedSettingGroupsSeededExpandAll) {
+    m_expandedSettingGroups.clear();
+    m_expandedSettingGroupsSeededExpandAll = cfg.shell.settingsExpandAllGroups;
   }
 
   m_contentContainer->setDirection(FlexDirection::Vertical);
@@ -1018,12 +1076,15 @@ void SettingsWindow::rebuildSettingsContent() {
           .selectedSection = m_selectedSection,
           .selectedBar = selectedBar,
           .selectedMonitorOverride = selectedMonitorOverride,
+          .selectedDockMonitorOverride = selectedDockMonitorOverride,
           .renamingBarName = m_renamingBarName,
           .pendingDeleteBarName = m_pendingDeleteBarName,
           .renamingMonitorOverrideBarName = m_renamingMonitorOverrideBarName,
           .renamingMonitorOverrideMatch = m_renamingMonitorOverrideMatch,
           .pendingDeleteMonitorOverrideBarName = m_pendingDeleteMonitorOverrideBarName,
           .pendingDeleteMonitorOverrideMatch = m_pendingDeleteMonitorOverrideMatch,
+          .renamingDockMonitorOverride = m_renamingDockMonitorOverride,
+          .pendingDeleteDockMonitorOverride = m_pendingDeleteDockMonitorOverride,
           .requestRebuild = [this]() { requestContentRebuild(/*refreshRegistry=*/true, /*refreshFilterRow=*/true); },
           .renameBar =
               [this](std::string oldName, std::string newName) { renameBar(std::move(oldName), std::move(newName)); },
@@ -1036,6 +1097,11 @@ void SettingsWindow::rebuildSettingsContent() {
           .deleteMonitorOverride = [this](
                                        std::string barName, std::string match
                                    ) { deleteMonitorOverride(std::move(barName), std::move(match)); },
+          .renameDockMonitorOverride = [this](
+                                           std::string oldTableName, std::string newMatch
+                                       ) { renameDockMonitorOverride(std::move(oldTableName), std::move(newMatch)); },
+          .deleteDockMonitorOverride =
+              [this](std::string tableName) { deleteDockMonitorOverride(std::move(tableName)); },
       }
   );
   logSettingsProfile("rebuildContent barManagement", phaseProfileWatch);
@@ -1044,6 +1110,7 @@ void SettingsWindow::rebuildSettingsContent() {
   const std::size_t visibleEntries = settings::addSettingsContentSections(
       *m_contentContainer, m_settingsRegistry, makeContentContext(cfg, selectedBar, selectedMonitorOverride)
   );
+
   logSettingsProfile("rebuildContent sections", phaseProfileWatch);
   phaseProfileWatch.reset();
 
@@ -1054,8 +1121,27 @@ void SettingsWindow::rebuildSettingsContent() {
         settings::SettingsPluginsContext{
             .scale = scale,
             .selectedSection = m_selectedSection,
+            .searchQuery = m_pluginSearchQuery,
+            .setSearchQuery =
+                [this](std::string query) {
+                  m_pluginSearchQuery = std::move(query);
+                  m_contentScrollState.offset = 0.0F;
+                  m_pendingDeletePluginId.clear();
+                  m_pluginSearchDebounceTimer.start(kSearchDebounceInterval, [this]() { requestContentRebuild(); });
+                },
             .plugins = m_pluginList,
             .sources = cfg.plugins.sources,
+            .searchActive = !m_searchQuery.empty(),
+            .pageTitleRow = m_pageTitleRow,
+            .groupJumpRow = m_groupJumpRow,
+            .scrollContentToTop =
+                [this](const Node& target) {
+                  if (m_contentScrollView != nullptr) {
+                    scrollNodeToScrollViewTop(*m_contentScrollView, target, Style::spaceMd * uiScale());
+                  }
+                },
+            .expandedGroupsByPage = m_expandedSettingGroups,
+            .expandAllGroups = cfg.shell.settingsExpandAllGroups,
             .pluginsLoading = m_pluginListDirty || m_pluginListRefreshInFlight,
             .setEnabled =
                 [this](std::string id, bool enable) {
@@ -1116,6 +1202,17 @@ void SettingsWindow::rebuildSettingsContent() {
                 },
         }
     );
+  }
+
+  if (m_pageTitleRow != nullptr) {
+    const bool hasPageTitle = !m_pageTitleRow->children().empty();
+    m_pageTitleRow->setVisible(hasPageTitle);
+    m_pageTitleRow->setParticipatesInLayout(hasPageTitle);
+  }
+  if (m_groupJumpRow != nullptr) {
+    const bool hasJumpRow = !m_groupJumpRow->children().empty();
+    m_groupJumpRow->setVisible(hasJumpRow);
+    m_groupJumpRow->setParticipatesInLayout(hasJumpRow);
   }
   logSettingsProfile("rebuildContent plugins", phaseProfileWatch);
   logSettingsProfile("rebuildContent total", totalProfileWatch);
@@ -1358,11 +1455,16 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
 ) {
   const auto requestRebuild = [this]() { requestSceneRebuild(); };
   const auto createBar = [this](std::string name) { this->createBar(std::move(name)); };
-  const auto createMonitorOverride = [this](std::string barName, std::string match) {
-    this->createMonitorOverride(std::move(barName), std::move(match));
+  const auto openMonitorOverrideCreate = [this](std::string barName) {
+    openMonitorOverrideCreateDialog(std::move(barName));
   };
+  const auto openDockMonitorOverrideCreate = [this]() { openMonitorOverrideCreateDialog(std::nullopt); };
   const auto clearTransientSettingsState = [this]() { this->clearTransientSettingsState(); };
-  const auto clearSearchQuery = [this]() { m_searchQuery.clear(); };
+  const auto clearSearchQuery = [this]() {
+    m_searchQuery.clear();
+    m_pluginSearchQuery.clear();
+    m_pluginSearchDebounceTimer.stop();
+  };
 
   auto body = ui::row({
       .align = FlexAlign::Stretch,
@@ -1382,13 +1484,12 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
           .selectedBarName = m_selectedBarName,
           .selectedMonitorOverride = m_selectedMonitorOverride,
           .creatingBarName = m_creatingBarName,
-          .creatingMonitorOverrideBarName = m_creatingMonitorOverrideBarName,
-          .creatingMonitorOverrideMatch = m_creatingMonitorOverrideMatch,
           .clearTransientState = clearTransientSettingsState,
           .clearSearchQuery = clearSearchQuery,
           .requestRebuild = requestRebuild,
           .createBar = createBar,
-          .createMonitorOverride = createMonitorOverride,
+          .openMonitorOverrideCreate = openMonitorOverrideCreate,
+          .openDockMonitorOverrideCreate = openDockMonitorOverrideCreate,
           .scrollSidebarNodeIntoView = [this](const Node* node) { scrollSidebarNodeIntoView(node); },
           .outNav = &m_sidebarNav,
       }
@@ -1397,6 +1498,30 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
 
   body->addChild(std::move(sidebar));
   body->addChild(ui::separator());
+
+  auto contentColumn = ui::column({.align = FlexAlign::Stretch, .gap = Style::spaceSm * scale, .flexGrow = 1.0F});
+  contentColumn->addChild(
+      ui::row({
+          .out = &m_pageTitleRow,
+          .align = FlexAlign::Center,
+          .fillWidth = true,
+          .configure = [scale](Flex& flex) {
+            flex.setPadding(Style::spaceMd * scale, Style::spaceLg * scale, 0.0F, Style::spaceLg * scale);
+          },
+      })
+  );
+  contentColumn->addChild(
+      ui::row({
+          .out = &m_groupJumpRow,
+          .align = FlexAlign::Center,
+          .wrap = true,
+          .gap = Style::spaceXs * scale,
+          .fillWidth = true,
+          .configure = [scale](Flex& flex) {
+            flex.setPadding(Style::spaceSm * scale, Style::spaceLg * scale, 0.0F, Style::spaceLg * scale);
+          },
+      })
+  );
 
   auto scroll = ui::scrollView({
       .out = &m_contentScrollView,
@@ -1421,7 +1546,8 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
   content->setGap(Style::spaceMd * scale);
   rebuildSettingsContent();
 
-  body->addChild(std::move(scroll));
+  contentColumn->addChild(std::move(scroll));
+  body->addChild(std::move(contentColumn));
   return body;
 }
 
@@ -1472,14 +1598,14 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
     }
 
     auto it = std::ranges::find_if(m_settingsRegistry, [](const settings::SettingEntry& entry) {
-      return entry.section == settings::SettingsSection::Services && entry.group == "calendar";
+      return entry.section == settings::SettingsSection::Calendar && entry.group == "general";
     });
     if (it != m_settingsRegistry.end()) {
       ++it;
     }
     settings::SettingEntry retry{
-        .section = settings::SettingsSection::Services,
-        .group = "calendar",
+        .section = settings::SettingsSection::Calendar,
+        .group = "general",
         .title = i18n::tr("settings.schema.services.calendar-credentials.label"),
         .subtitle = i18n::tr(descriptionKey),
         .path = {},
@@ -1529,14 +1655,14 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
     }
 
     auto it = std::ranges::find_if(m_settingsRegistry, [](const settings::SettingEntry& entry) {
-      return entry.section == settings::SettingsSection::Services && entry.group == "calendar";
+      return entry.section == settings::SettingsSection::Calendar && entry.group == "general";
     });
     if (it != m_settingsRegistry.end()) {
       ++it;
     }
     settings::SettingEntry retry{
-        .section = settings::SettingsSection::Services,
-        .group = "calendar",
+        .section = settings::SettingsSection::Calendar,
+        .group = "general",
         .title = i18n::tr("settings.schema.services.calendar-storage.label"),
         .subtitle = i18n::tr(descriptionKey),
         .path = {},
@@ -1661,7 +1787,7 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
   };
 
   if (calendarStorageRecovery && m_resetEncryptedStorage) {
-    insertStorageRecovery(settings::SettingsSection::Services, "calendar");
+    insertStorageRecovery(settings::SettingsSection::Calendar, "general");
   }
   if (clipboardStorageRecovery && m_resetEncryptedStorage) {
     insertStorageRecovery(settings::SettingsSection::Shell, "clipboard");
@@ -1856,8 +1982,8 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
 
   if (m_config != nullptr) {
     auto it = std::ranges::find_if(m_settingsRegistry, [](const settings::SettingEntry& e) {
-      return e.section == settings::SettingsSection::Services
-          && e.group == "calendar"
+      return e.section == settings::SettingsSection::Calendar
+          && e.group == "calendar-accounts"
           && e.path == std::vector<std::string>{"calendar", "refresh_minutes"};
     });
     if (it != m_settingsRegistry.end()) {
@@ -1865,8 +1991,8 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
     }
     const settings::SettingVisibility calendarOn = [](const Config& c) { return c.calendar.enabled; };
     settings::SettingEntry addBtn{
-        .section = settings::SettingsSection::Services,
-        .group = "calendar",
+        .section = settings::SettingsSection::Calendar,
+        .group = "calendar-accounts",
         .title = i18n::tr("settings.schema.services.calendar-add.label"),
         .subtitle = i18n::tr("settings.schema.services.calendar-add.description"),
         .path = {},
@@ -1899,8 +2025,8 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
           : reconnectRequired                             ? "settings.schema.services.calendar-edit.button-reconnect"
                                                           : "settings.schema.services.calendar-edit.button";
       settings::SettingEntry btn{
-          .section = settings::SettingsSection::Services,
-          .group = "calendar",
+          .section = settings::SettingsSection::Calendar,
+          .group = "calendar-accounts",
           .title = account.displayName.empty() ? account.id : account.displayName,
           .subtitle = i18n::tr(descriptionKey),
           .path = {},
@@ -2028,6 +2154,8 @@ void SettingsWindow::buildScene(std::uint32_t width, std::uint32_t height) {
   const auto h = static_cast<float>(height);
   const float scale = uiScale();
   m_actionsMenuButton = nullptr;
+  m_pageTitleRow = nullptr;
+  m_groupJumpRow = nullptr;
   m_contentScrollView = nullptr;
   m_sidebarScrollView = nullptr;
   m_sidebarNav = nullptr;
@@ -2090,7 +2218,7 @@ void SettingsWindow::buildScene(std::uint32_t width, std::uint32_t height) {
     m_sceneRoot->setPopupContext(m_selectPopup.get());
   }
 
-  const float bgOpacity = cfg.shell.settingsWindowTranslucent ? 0.75F : 1.0F;
+  const float bgOpacity = cfg.shell.settingsWindowTranslucent ? 0.8F : 1.0F;
 
   auto bg = ui::box({
       .width = w,
