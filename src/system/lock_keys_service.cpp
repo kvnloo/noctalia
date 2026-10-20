@@ -13,6 +13,7 @@ namespace {
   namespace fs = std::filesystem;
 
   constexpr auto kRefreshInterval = std::chrono::milliseconds(200);
+  constexpr auto kSysfsRetryInterval = std::chrono::seconds(5);
   constexpr int kSysfsFailureRescanThreshold = 3;
 
   bool readBrightness(const fs::path& path, bool& on) {
@@ -75,7 +76,7 @@ void LockKeysService::refreshNow() {
 }
 
 LockKeysService::LockKeysState LockKeysService::readCurrentState() {
-  if (!m_sysfsDiscovered) {
+  if (!m_sysfsDiscovered && std::chrono::steady_clock::now() >= m_nextSysfsScanAt) {
     discoverSysfsLeds();
   }
 
@@ -136,7 +137,8 @@ void LockKeysService::discoverSysfsLeds() {
   m_numLockPaths.clear();
   m_scrollLockPaths.clear();
   m_sysfsReadFailures = 0;
-  m_sysfsDiscovered = true;
+  m_sysfsDiscovered = false;
+  m_nextSysfsScanAt = std::chrono::steady_clock::now() + kSysfsRetryInterval;
 
   const fs::path ledsDir{"/sys/class/leds"};
   std::error_code ec;
@@ -171,6 +173,7 @@ void LockKeysService::discoverSysfsLeds() {
       target->push_back(brightnessPath);
     }
   }
+  m_sysfsDiscovered = hasCachedSysfsLeds();
 }
 
 bool LockKeysService::hasCachedSysfsLeds() const noexcept {
