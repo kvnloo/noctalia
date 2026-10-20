@@ -1020,8 +1020,8 @@ bool SettingsWindow::onPointerEvent(const PointerEvent& event) {
           static_cast<float>(event.sx), static_cast<float>(event.sy), event.button, pressed, event.serial, event.time,
           event.touch
       );
-      if (hasPendingReset && !pressed && event.button == BTN_LEFT
-          && m_pendingResetPageScope == pendingResetPage && m_pendingResetSettingPaths == pendingResetPaths) {
+      if (hasPendingReset && !pressed && event.button == BTN_LEFT && m_pendingResetPageScope == pendingResetPage
+          && m_pendingResetSettingPaths == pendingResetPaths) {
         m_pendingResetPageScope.clear();
         m_pendingResetSettingPaths.clear();
         requestSceneRebuild();
