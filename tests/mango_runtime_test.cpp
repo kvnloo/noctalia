@@ -99,7 +99,7 @@ int main() {
       requests.push_back(request);
 
       if (i == 0) {
-        constexpr std::string_view response = "{\\"clients\\":[]}\n";
+        constexpr std::string_view response = "{\"clients\":[]}\n";
         if (::send(client, response.data(), response.size(), MSG_NOSIGNAL)
             != static_cast<ssize_t>(response.size())) {
           serverError = 6;
