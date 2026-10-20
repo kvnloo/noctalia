@@ -1,8 +1,8 @@
 #include "compositors/mango/mango_runtime.h"
 
 #include <atomic>
-#include <chrono>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -101,8 +101,8 @@ int main() {
 
       if (i == 0) {
         constexpr std::string_view response = "{\"clients\":[]}\n";
-        if (::send(client, response.data(), response.size(), MSG_NOSIGNAL)
-            != static_cast<ssize_t>(response.size())) {
+        const ssize_t sent = ::send(client, response.data(), response.size(), MSG_NOSIGNAL);
+        if (sent != static_cast<ssize_t>(response.size())) {
           serverError = 6;
           ::close(client);
           return;
