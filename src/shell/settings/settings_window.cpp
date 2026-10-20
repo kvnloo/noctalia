@@ -1012,10 +1012,20 @@ bool SettingsWindow::onPointerEvent(const PointerEvent& event) {
         consumed = true;
         break;
       }
+      const bool hasPendingReset = !m_pendingResetPageScope.empty() || !m_pendingResetSettingPaths.empty();
+      const auto pendingResetPage = hasPendingReset && !pressed ? m_pendingResetPageScope : std::string{};
+      const auto pendingResetPaths =
+          hasPendingReset && !pressed ? m_pendingResetSettingPaths : std::vector<std::vector<std::string>>{};
       m_inputDispatcher.pointerButton(
           static_cast<float>(event.sx), static_cast<float>(event.sy), event.button, pressed, event.serial, event.time,
           event.touch
       );
+      if (hasPendingReset && !pressed && event.button == BTN_LEFT
+          && m_pendingResetPageScope == pendingResetPage && m_pendingResetSettingPaths == pendingResetPaths) {
+        m_pendingResetPageScope.clear();
+        m_pendingResetSettingPaths.clear();
+        requestSceneRebuild();
+      }
       consumed = m_pointerInside;
     }
     break;
@@ -1083,6 +1093,12 @@ void SettingsWindow::onKeyboardEvent(const KeyboardEvent& event) {
   if (event.pressed && KeybindMatcher::matches(KeybindAction::Cancel, event.sym, event.modifiers)) {
     if (m_actionsMenuPopup != nullptr && m_actionsMenuPopup->isOpen()) {
       m_actionsMenuPopup->close();
+      return;
+    }
+    if (!m_pendingResetPageScope.empty() || !m_pendingResetSettingPaths.empty()) {
+      m_pendingResetPageScope.clear();
+      m_pendingResetSettingPaths.clear();
+      requestRebuild();
       return;
     }
     if (!m_editingWidgetName.empty()
