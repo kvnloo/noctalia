@@ -18,7 +18,8 @@ namespace compositors::mango {
 
     [[nodiscard]] bool waitForSocket(int fd, short events, std::chrono::steady_clock::time_point deadline) {
       while (true) {
-        const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        const auto remaining =
+            std::chrono::ceil<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
         if (remaining.count() <= 0) {
           return false;
         }
