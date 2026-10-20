@@ -43,7 +43,9 @@ void KeyboardLayoutOsd::prime(const CompositorPlatform& platform) {
 
 void KeyboardLayoutOsd::onLayoutChanged(const CompositorPlatform& platform, const Config& config) {
   const std::string layoutName = platform.currentKeyboardLayoutName();
-  if (layoutName.empty()) {
+  // Some virtual keyboards emit transient, unrecognized names without a real layout switch.
+  // Do not show an unknown ("--") OSD or replace the last real layout with this transient state.
+  if (!hasResolvableKeyboardLayoutLabel(layoutName, config.shell.keyboardLayout.customLabels)) {
     return;
   }
 
