@@ -306,6 +306,12 @@ std::string resolveKeyboardLayoutLabel(
   return formatKeyboardLayoutLabel(layoutName, displayMode);
 }
 
+bool hasResolvableKeyboardLayoutLabel(
+    const std::string& layoutName, const std::unordered_map<std::string, std::string>& customLabels
+) {
+  return resolveKeyboardLayoutLabel(layoutName, KeyboardLayoutDisplayMode::Short, customLabels) != kUnknownLabel;
+}
+
 std::string resolveInputMethodLabel(
     const std::string& inputMethodName, KeyboardLayoutDisplayMode displayMode,
     const std::unordered_map<std::string, std::string>& customLabels
