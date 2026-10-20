@@ -1255,6 +1255,7 @@ if build_tests
     'location_service',
     'lockscreen_session_actions',
     'log',
+    'mango_runtime',
     'math_provider',
     'monitor_selector',
     'network_display',
