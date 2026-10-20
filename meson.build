@@ -1253,6 +1253,7 @@ if build_tests
     'keyboard_layout_label',
     'lane_selection_token',
     'location_service',
+    'mango_runtime',
     'lockscreen_session_actions',
     'log',
     'math_provider',
