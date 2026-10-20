@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <charconv>
 #include <cstring>
 #include <fcntl.h>
@@ -20,6 +21,7 @@
 namespace {
 
   constexpr Logger kLog("workspace_mango");
+  constexpr auto kWatchReconnectInterval = std::chrono::seconds(2);
 
   [[nodiscard]] std::string jsonString(const nlohmann::json& json, const char* key) {
     const auto it = json.find(key);
@@ -113,6 +115,7 @@ bool MangoWorkspaceBackend::connectSocket() {
   if (m_watchFd >= 0) {
     return true;
   }
+  m_nextReconnectAt = std::chrono::steady_clock::now() + kWatchReconnectInterval;
   if (!openWatchSocket()) {
     return false;
   }
@@ -242,11 +245,23 @@ void MangoWorkspaceBackend::onOutputRemoved(wl_output* output) { std::erase(m_kn
 
 int MangoWorkspaceBackend::pollFd() const noexcept { return m_watchFd; }
 
-int MangoWorkspaceBackend::pollTimeoutMs() const noexcept { return m_watchFd >= 0 ? -1 : 2000; }
+int MangoWorkspaceBackend::pollTimeoutMs() const noexcept {
+  if (m_watchFd >= 0) {
+    return -1;
+  }
+  const auto remaining = m_nextReconnectAt - std::chrono::steady_clock::now();
+  if (remaining <= std::chrono::steady_clock::duration::zero()) {
+    return 0;
+  }
+  return std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count()));
+}
 
 void MangoWorkspaceBackend::dispatchPoll(short revents) {
   if (m_watchFd < 0) {
-    (void)connectSocket();
+    // Other event sources can wake poll before our timeout; don't flood a failed socket.
+    if (std::chrono::steady_clock::now() >= m_nextReconnectAt) {
+      (void)connectSocket();
+    }
     return;
   }
   if ((revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
@@ -328,6 +343,7 @@ void MangoWorkspaceBackend::closeWatchSocket() {
   if (m_watchFd >= 0) {
     ::close(m_watchFd);
     m_watchFd = -1;
+    m_nextReconnectAt = std::chrono::steady_clock::now() + kWatchReconnectInterval;
   }
   m_readBuffer.clear();
 }
