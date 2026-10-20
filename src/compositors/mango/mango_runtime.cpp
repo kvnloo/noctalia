@@ -1,8 +1,10 @@
 #include "compositors/mango/mango_runtime.h"
 
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -12,9 +14,32 @@ namespace compositors::mango {
 
   namespace {
 
+    constexpr auto kRequestTimeout = std::chrono::milliseconds(500);
+
     [[nodiscard]] bool isSocketPath(const std::string& path) {
       struct stat st{};
       return !path.empty() && ::stat(path.c_str(), &st) == 0 && S_ISSOCK(st.st_mode);
+    }
+
+    [[nodiscard]] bool waitForRequestSocket(int fd, short events, std::chrono::steady_clock::time_point deadline) {
+      while (true) {
+        const auto remaining =
+            std::chrono::ceil<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        if (remaining.count() <= 0) {
+          return false;
+        }
+        pollfd socket{.fd = fd, .events = events, .revents = 0};
+        const int result = ::poll(&socket, 1, static_cast<int>(remaining.count()));
+        if (result > 0) {
+          if ((socket.revents & (POLLERR | POLLNVAL)) != 0) {
+            return false;
+          }
+          return (socket.revents & events) != 0 || (events == POLLIN && (socket.revents & POLLHUP) != 0);
+        }
+        if (result == 0 || errno != EINTR) {
+          return false;
+        }
+      }
     }
 
   } // namespace
@@ -35,7 +60,9 @@ namespace compositors::mango {
       return std::nullopt;
     }
 
-    const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    // The deadline covers connect, writes and the entire response, not one timeout per read.
+    const auto deadline = std::chrono::steady_clock::now() + kRequestTimeout;
+    const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     if (fd < 0) {
       return std::nullopt;
     }
@@ -49,17 +76,29 @@ namespace compositors::mango {
     std::memcpy(addr.sun_path, m_socketPath.c_str(), m_socketPath.size() + 1);
 
     if (::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) < 0) {
-      ::close(fd);
-      return std::nullopt;
+      if (errno != EINPROGRESS || !waitForRequestSocket(fd, POLLOUT, deadline)) {
+        ::close(fd);
+        return std::nullopt;
+      }
+      int socketError = 0;
+      socklen_t errorLength = sizeof(socketError);
+      if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &socketError, &errorLength) < 0 || socketError != 0) {
+        ::close(fd);
+        return std::nullopt;
+      }
     }
 
     std::string payload(command);
     payload.push_back('\n');
     std::size_t offset = 0;
     while (offset < payload.size()) {
+      if (!waitForRequestSocket(fd, POLLOUT, deadline)) {
+        ::close(fd);
+        return std::nullopt;
+      }
       const ssize_t written = ::send(fd, payload.data() + offset, payload.size() - offset, MSG_NOSIGNAL);
       if (written <= 0) {
-        if (written < 0 && errno == EINTR) {
+        if (written < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
           continue;
         }
         ::close(fd);
@@ -71,7 +110,11 @@ namespace compositors::mango {
     std::string response;
     char buffer[4096];
     while (true) {
-      const ssize_t count = ::read(fd, buffer, sizeof(buffer));
+      if (!waitForRequestSocket(fd, POLLIN, deadline)) {
+        ::close(fd);
+        return std::nullopt;
+      }
+      const ssize_t count = ::recv(fd, buffer, sizeof(buffer), 0);
       if (count > 0) {
         response.append(buffer, static_cast<std::size_t>(count));
         if (response.contains('\n')) {
@@ -82,7 +125,7 @@ namespace compositors::mango {
       if (count == 0) {
         break;
       }
-      if (errno == EINTR) {
+      if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
         continue;
       }
       ::close(fd);
