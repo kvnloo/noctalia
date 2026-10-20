@@ -50,9 +50,10 @@ int main() {
     return 1;
   }
 
-  const char* previousEnv = std::getenv("MANGO_INSTANCE_SIGNATURE");
-  const std::optional<std::string> savedEnv = previousEnv != nullptr ? std::optional<std::string>(previousEnv)
-                                                                     : std::nullopt;
+  std::optional<std::string> savedEnv;
+  if (const char* previousEnv = std::getenv("MANGO_INSTANCE_SIGNATURE"); previousEnv != nullptr) {
+    savedEnv = previousEnv;
+  }
   if (!check(::setenv("MANGO_INSTANCE_SIGNATURE", path.c_str(), 1) == 0, "failed to set socket environment")) {
     ::close(listener);
     ::unlink(path.c_str());
