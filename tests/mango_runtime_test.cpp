@@ -24,8 +24,17 @@ int main() {
   sockaddr_un addr{};
   addr.sun_family = AF_UNIX;
   std::memcpy(addr.sun_path, socketPath.c_str(), socketPath.size() + 1);
-  if (listener < 0 || ::bind(listener, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) < 0
-      || ::listen(listener, 2) < 0 || ::setenv("MANGO_INSTANCE_SIGNATURE", socketPath.c_str(), 1) < 0) {
+  bool socketReady = listener >= 0;
+  if (socketReady) {
+    socketReady = ::bind(listener, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == 0;
+  }
+  if (socketReady) {
+    socketReady = ::listen(listener, 2) == 0;
+  }
+  if (socketReady) {
+    socketReady = ::setenv("MANGO_INSTANCE_SIGNATURE", socketPath.c_str(), 1) == 0;
+  }
+  if (!socketReady) {
     std::println(stderr, "mango_runtime_test: failed to create local socket");
     if (listener >= 0) {
       ::close(listener);
@@ -64,8 +73,7 @@ int main() {
         }
         if (index == 0) {
           const std::string reply = "{\"success\":true}\n";
-          if (::send(client, reply.data(), reply.size(), MSG_NOSIGNAL)
-              != static_cast<ssize_t>(reply.size())) {
+          if (::send(client, reply.data(), reply.size(), MSG_NOSIGNAL) != static_cast<ssize_t>(reply.size())) {
             serverOk = false;
           }
         } else {
@@ -88,14 +96,11 @@ int main() {
   ::unlink(socketPath.c_str());
   ::rmdir(tempDir);
 
-  const bool commandsOk = receivedCommands[0] == "get all-clients\n"
-      && receivedCommands[1] == "get all-clients\n";
+  const bool commandsOk = receivedCommands[0] == "get all-clients\n" && receivedCommands[1] == "get all-clients\n";
   const bool bounded = blockedTime < std::chrono::milliseconds(1400);
   if (!serverOk || !commandsOk || !firstOk || !secondAbsent || !bounded) {
-    std::println(
-        stderr, "mango_runtime_test: server={} commands={} success={} timeout={} elapsed={}ms",
-        serverOk, commandsOk, firstOk, secondAbsent, blockedTime.count()
-    );
+    std::println(stderr, "mango_runtime_test: server={} commands={}", serverOk, commandsOk);
+    std::println(stderr, "success={} timeout={} elapsed={}ms", firstOk, secondAbsent, blockedTime.count());
     return 1;
   }
   return 0;
