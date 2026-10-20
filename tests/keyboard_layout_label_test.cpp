@@ -61,22 +61,14 @@ int main() {
       "unknown short layout did not use the unknown marker"
   );
 
-  expect(
-      !hasResolvableKeyboardLayoutLabel("", customLabels),
-      "an empty keyboard layout must not trigger an OSD"
-  );
+  expect(!hasResolvableKeyboardLayoutLabel("", customLabels), "an empty keyboard layout must not trigger an OSD");
   expect(
       !hasResolvableKeyboardLayoutLabel("Virtual keyboard event", customLabels),
       "an unrecognized virtual keyboard layout must not trigger an OSD"
   );
+  expect(hasResolvableKeyboardLayoutLabel("Arabic", customLabels), "a known physical layout should trigger an OSD");
   expect(
-      hasResolvableKeyboardLayoutLabel("Arabic", customLabels),
-      "a known physical layout should trigger an OSD"
-  );
-  expect(
-      hasResolvableKeyboardLayoutLabel(
-          "Virtual keyboard event", {{"Virtual keyboard event", "Voice"}}
-      ),
+      hasResolvableKeyboardLayoutLabel("Virtual keyboard event", {{"Virtual keyboard event", "Voice"}}),
       "a configured custom label should preserve user-intended layout notifications"
   );
 
