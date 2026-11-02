@@ -101,7 +101,7 @@ private:
   compositors::mango::MangoRuntime& m_runtime;
   WorkspaceOutputNameResolver::Resolver m_outputNameResolver;
   int m_watchFd = -1;
-  std::chrono::steady_clock::time_point m_nextReconnectAt{};
+  std::chrono::steady_clock::time_point m_nextReconnectAt;
   std::string m_readBuffer;
   std::vector<wl_output*> m_knownOutputs;
   std::unordered_map<std::string, OutputState> m_outputsByName;
