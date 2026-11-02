@@ -1289,12 +1289,15 @@ int CompositorPlatform::workspacePollTimeoutMs() const noexcept {
 
 void CompositorPlatform::dispatchWorkspacePoll(const std::vector<pollfd>& fds, std::size_t startIdx) {
   std::size_t index = startIdx;
-  if (m_workspaces != nullptr
-      && m_workspaces->pollFd() >= 0
-      && index < fds.size()
-      && fds[index].fd == m_workspaces->pollFd()) {
-    m_workspaces->dispatchPoll(fds[index].revents);
-    ++index;
+  if (m_workspaces != nullptr) {
+    const int workspaceFd = m_workspaces->pollFd();
+    if (workspaceFd >= 0 && index < fds.size() && fds[index].fd == workspaceFd) {
+      m_workspaces->dispatchPoll(fds[index].revents);
+      ++index;
+    } else if (workspaceFd < 0 && m_workspaces->pollTimeoutMs() >= 0) {
+      // Keep timeout-driven reconnects reachable after the watch socket closes.
+      m_workspaces->dispatchPoll(0);
+    }
   }
 
   if (m_workspaceMetadataBackend != nullptr) {
