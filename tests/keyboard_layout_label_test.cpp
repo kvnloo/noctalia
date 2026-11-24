@@ -21,6 +21,10 @@ int main() {
   );
   TEST_CHECK(formatKeyboardLayoutLabel("English (Macintosh, ABC, ANSI)", KeyboardLayoutDisplayMode::Short) == "US");
   TEST_CHECK(formatKeyboardLayoutLabel("unknown layout", KeyboardLayoutDisplayMode::Short) == "--");
+  TEST_CHECK(!hasResolvableKeyboardLayoutLabel("", customLabels));
+  TEST_CHECK(!hasResolvableKeyboardLayoutLabel("unknown layout", customLabels));
+  TEST_CHECK(hasResolvableKeyboardLayoutLabel("Arabic", customLabels));
+  TEST_CHECK(hasResolvableKeyboardLayoutLabel("unknown layout", {{"unknown layout", "Voice"}}));
 
   return 0;
 }

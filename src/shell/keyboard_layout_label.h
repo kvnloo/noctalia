@@ -13,6 +13,10 @@ std::string resolveKeyboardLayoutLabel(
     const std::string& layoutName, KeyboardLayoutDisplayMode displayMode,
     const std::unordered_map<std::string, std::string>& customLabels
 );
+// Whether a layout resolves to a short label or a custom label rather than the unknown marker.
+bool hasResolvableKeyboardLayoutLabel(
+    const std::string& layoutName, const std::unordered_map<std::string, std::string>& customLabels
+);
 // Like resolveKeyboardLayoutLabel, but keeps an unrecognized name (e.g. "Mozc") instead of returning "--".
 std::string resolveInputMethodLabel(
     const std::string& inputMethodName, KeyboardLayoutDisplayMode displayMode,

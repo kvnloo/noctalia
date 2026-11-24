@@ -43,7 +43,8 @@ void KeyboardLayoutOsd::prime(const CompositorPlatform& platform) {
 
 void KeyboardLayoutOsd::onLayoutChanged(const CompositorPlatform& platform, const Config& config) {
   const std::string layoutName = platform.currentKeyboardLayoutName();
-  if (layoutName.empty()) {
+  // Virtual keyboards (voice typing, wtype) switch to keymaps with no recognizable name; ignore them.
+  if (!hasResolvableKeyboardLayoutLabel(layoutName, config.shell.keyboardLayout.customLabels)) {
     return;
   }
 
